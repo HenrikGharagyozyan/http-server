@@ -1,6 +1,9 @@
 #pragma once
 
 #include <utility>
+#include <string>
+#include <span>
+
 
 namespace server 
 {
@@ -30,6 +33,9 @@ namespace server
 
         // Manual close
         void close() noexcept;
+
+        [[nodiscard]] std::string recv(size_t max_bytes = 4096);
+        void send(std::span<const char> data);
 
     private:
         int fd_{-1}; // -1 on Linux means an invalid descriptor

@@ -4,7 +4,7 @@ out/
 .cache/
 compile_commands.json
 
-# Игнорируем файлы, созданные IDE (VS Code, CLion, и т.д.)
+# Ignore files created by IDEs (VS Code, CLion, etc.)
 .idea/
 .vscode/
 *.swp
