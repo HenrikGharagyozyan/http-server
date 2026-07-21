@@ -1,4 +1,4 @@
-# Игнорируем папки, в которых CMake собирает проект
+# Ignore folders where CMake builds the project
 build/
 out/
 .cache/
