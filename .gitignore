@@ -1,0 +1,12 @@
+# Игнорируем папки, в которых CMake собирает проект
+build/
+out/
+.cache/
+compile_commands.json
+
+# Игнорируем файлы, созданные IDE (VS Code, CLion, и т.д.)
+.idea/
+.vscode/
+*.swp
+*.suo
+*.user
