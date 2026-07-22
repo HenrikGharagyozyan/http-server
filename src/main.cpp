@@ -1,4 +1,6 @@
 #include "server/TcpServer.hpp"
+#include "http/Parser.hpp"
+#include "http/Response.hpp"
 #include <iostream>
 
 int main() 
@@ -18,25 +20,45 @@ int main()
             server::Socket client = server.accept_connection();
             std::cout << "Client connected! Client fd: " << client.get() << "\n";
             
-            // Read the request from the browser or curl
-            std::string request = client.recv();
-            std::cout << "--- Received HTTP Request ---\n";
-            std::cout << request << "\n";
-            std::cout << "-----------------------------\n";
+            std::string raw_request = client.recv();
+            if (raw_request.empty()) 
+                continue; // Protection against empty connections
 
-            // Build a hard-coded HTTP response
-            std::string response = 
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Length: 13\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-                "Hello, World!";
-            
-            // Send the response
-            client.send(response);
-            std::cout << "Response sent.\n\n";
-            
-            // At the end of the iteration, ~Socket() will run and close the connection
+            try 
+            {
+                // Parse raw text into our structure
+                http::Request req = http::parse_request(raw_request);
+                
+                std::cout << "--- Parsed Request ---\n";
+                std::cout << "URI: " << req.uri << "\n";
+                std::cout << "Host: " << req.headers["Host"] << "\n";
+                std::cout << "----------------------\n";
+
+                // Build a nice typed response
+                http::Response res;
+                res.status_code = http::StatusCode::OK;
+                res.headers["Content-Type"] = "text/html";
+                res.headers["Connection"] = "close";
+                res.body = "<h1>Welcome to cpp-http-server!</h1><p>You requested URI: " + req.uri + "</p>";
+                
+                // Content-Length is required, calculate it dynamically
+                res.headers["Content-Length"] = std::to_string(res.body.size());
+
+                client.send(res.serialize());
+                std::cout << "Response sent.\n\n";
+                
+            } 
+            catch (const std::exception& e) 
+            {
+                std::cerr << "Parse error: " << e.what() << "\n";
+                
+                // If someone sent garbage, return 400 Bad Request
+                http::Response res;
+                res.status_code = http::StatusCode::BAD_REQUEST;
+                res.body = "Bad Request";
+                res.headers["Content-Length"] = std::to_string(res.body.size());
+                client.send(res.serialize());
+            }
         }
     } 
     catch (const std::exception& e) 
