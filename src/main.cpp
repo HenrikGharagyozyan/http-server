@@ -25,7 +25,7 @@ int main()
             http::Response res;
             res.status_code = http::StatusCode::OK;
             // Simulate a response from the database
-            res.body = "{\"users\": [\"Henrik\", \"Arshavir\"]}";
+            res.body = "{\"users\": [\"John\", \"Max\"]}";
             res.headers["Content-Length"] = std::to_string(res.body.size());
             res.headers["Content-Type"] = "application/json";
             return res;
