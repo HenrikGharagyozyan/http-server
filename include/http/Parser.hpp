@@ -7,7 +7,7 @@
 namespace http 
 {
 
-    // Функция парсинга. Бросает std::invalid_argument, если формат неверный.
+    // Parsing function. Throws std::invalid_argument if the format is invalid.
     Request parse_request(std::string_view raw_data);
 
 } // namespace http

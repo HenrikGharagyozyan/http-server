@@ -1,10 +1,11 @@
 #include "http/Parser.hpp"
+
 #include <stdexcept>
 
 namespace http 
 {
 
-    // Вспомогательная функция для конвертации строки в enum Method
+    // Helper function to convert string to enum Method
     static Method string_to_method(std::string_view method_str) 
     {
         if (method_str == "GET") return Method::GET;
@@ -18,7 +19,7 @@ namespace http
     {
         Request req;
         
-        // 1. Ищем конец первой строки (Request-Line)
+        // 1. Find the end of the first line (Request-Line)
         size_t line_end = raw_data.find("\r\n");
         if (line_end == std::string_view::npos) 
         {
@@ -27,7 +28,7 @@ namespace http
         
         std::string_view request_line = raw_data.substr(0, line_end);
         
-        // Парсим метод, URI и версию из request_line (они разделены пробелами)
+        // Parse method, URI, and version from request_line (they are separated by spaces)
         size_t method_end = request_line.find(' ');
         size_t uri_end = request_line.find(' ', method_end + 1);
         
@@ -40,18 +41,18 @@ namespace http
         req.uri = std::string(request_line.substr(method_end + 1, uri_end - method_end - 1));
         req.version = std::string(request_line.substr(uri_end + 1));
 
-        // 2. Парсим заголовки
-        size_t start = line_end + 2; // пропускаем \r\n
+        // 2. Parse headers
+        size_t start = line_end + 2; // skip \r\n
         while (true) 
         {
             line_end = raw_data.find("\r\n", start);
             if (line_end == std::string_view::npos) 
                 break;
             
-            // Если мы нашли пустую строку (\r\n\r\n), значит заголовки закончились
+            // If we found an empty line (\r\n\r\n), headers are finished
             if (line_end == start) 
             {
-                start += 2; // перепрыгиваем через пустую строку к телу
+                start += 2; // jump over the empty line to the body
                 break;
             }
             
@@ -63,7 +64,7 @@ namespace http
                 std::string_view key = header_line.substr(0, colon_pos);
                 std::string_view value = header_line.substr(colon_pos + 1);
                 
-                // Убираем ведущий пробел у значения (например "Host: localhost" -> "localhost")
+                // Remove leading space from the value (e.g., "Host: localhost" -> "localhost")
                 if (!value.empty() && value[0] == ' ') 
                 {
                     value.remove_prefix(1);
@@ -75,7 +76,7 @@ namespace http
             start = line_end + 2;
         }
 
-        // 3. Всё остальное — это тело запроса (Body)
+        // 3. Everything else is the request body (Body)
         if (start < raw_data.size()) 
         {
             req.body = std::string(raw_data.substr(start));

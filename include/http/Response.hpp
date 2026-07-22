@@ -14,7 +14,7 @@ namespace http
         INTERNAL_SERVER_ERROR = 500
     };
 
-    // Вспомогательная функция, чтобы не писать "OK" или "Not Found" руками
+    // Helper function to avoid writing "OK" or "Not Found" manually
     std::string get_status_message(StatusCode code);
 
     struct Response 
