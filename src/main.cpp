@@ -1,5 +1,6 @@
 #include "server/HttpServer.hpp"
 #include "http/Response.hpp"
+#include "utils/FileSystem.hpp"
 
 #include <iostream>
 #include <chrono>
@@ -12,27 +13,44 @@ int main()
     {
         server::HttpServer app;
         
-        // Register the home page
-        app.get("/", [](const http::Request& /*req*/) 
+        // Наш JSON API
+        app.get("/api/users", [](const http::Request& /*req*/) 
             {
                 http::Response res;
                 res.status_code = http::StatusCode::OK;
-                res.body = "<h1>Welcome to cpp-http-server!</h1>";
+                res.body = "{\"users\": [\"Henrik\", \"Arshavir\"]}";
                 res.headers["Content-Length"] = std::to_string(res.body.size());
-                res.headers["Content-Type"] = "text/html";
+                res.headers["Content-Type"] = "application/json";
                 return res;
             });
 
-        // Register the API endpoint
-        app.get("/api/users", [](const http::Request& /*req*/) 
+        // Обработчик статических файлов (Fallback)
+        app.set_default_handler([](const http::Request& req) 
             {
-                std::this_thread::sleep_for(std::chrono::seconds(5));
-
                 http::Response res;
-                res.status_code = http::StatusCode::OK;
-                res.body = "{\"users\": [\"John\", \"Max\"]}";
+                
+                // Если запрашивают корень "/", отдаем index.html
+                std::string filepath = (req.uri == "/") ? "/index.html" : req.uri;
+                
+                // Ищем файлы относительно папки запуска (корень проекта)
+                // "../" потому что мы запускаем бинарник из папки build/
+                std::string full_path = "../public" + filepath; 
+
+                std::string file_content;
+                if (utils::read_file(full_path, file_content)) 
+                {
+                    res.status_code = http::StatusCode::OK;
+                    res.body = std::move(file_content);
+                    res.headers["Content-Type"] = utils::get_mime_type(filepath);
+                } 
+                else 
+                {
+                    res.status_code = http::StatusCode::NOT_FOUND;
+                    res.body = "<h1>404 Not Found</h1>";
+                    res.headers["Content-Type"] = "text/html";
+                }
+                
                 res.headers["Content-Length"] = std::to_string(res.body.size());
-                res.headers["Content-Type"] = "application/json";
                 return res;
             });
 
