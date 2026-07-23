@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(cpp-http-server VERSION 0.1.0 LANGUAGES CXX)
+project(http-server VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,7 @@ add_executable(${PROJECT_NAME}
     src/server/Router.cpp
     src/http/Response.cpp
     src/http/Parser.cpp
+    src/utils/FileSystem.cpp
 )
 
 find_package(Threads REQUIRED)

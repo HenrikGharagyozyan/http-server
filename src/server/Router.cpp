@@ -14,6 +14,11 @@ namespace server
         routes_[http::Method::POST][uri] = std::move(handler);
     }
 
+    void server::Router::set_default_handler(Handler handler)
+    {
+        default_handler_ = std::move(handler);
+    }
+
     http::Response Router::route(const http::Request& req) const 
     {
         // 1. Find the method (GET, POST, etc.)
@@ -28,6 +33,9 @@ namespace server
                 return uri_it->second(req); 
             }
         }
+
+        if (default_handler_)
+            return default_handler_(req);
 
         // If no route is found, return 404
         http::Response res;

@@ -24,9 +24,13 @@ namespace server
         // Main dispatch method: finds the appropriate Handler and invokes it
         [[nodiscard]] http::Response route(const http::Request& req) const;
 
+        void set_default_handler(Handler handler);
+
     private:
         // Two-level hash table: Method -> (URI -> Handler)
         std::unordered_map<http::Method, std::unordered_map<std::string, Handler>> routes_;
+
+        Handler default_handler_{nullptr};
     };
 
 } // namespace server
