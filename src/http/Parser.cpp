@@ -15,71 +15,82 @@ namespace http
         return Method::UNKNOWN;
     }
 
-    Request parse_request(std::string_view raw_data) 
+    Request parse_request(std::string_view raw_data)
     {
         Request req;
-        
-        // 1. Find the end of the first line (Request-Line)
-        size_t line_end = raw_data.find("\r\n");
-        if (line_end == std::string_view::npos) 
+
+        // ==========================================================
+        // Find the end of headers
+        // ==========================================================
+        const size_t headers_end = raw_data.find("\r\n\r\n");
+        if (headers_end == std::string_view::npos)
         {
-            throw std::invalid_argument("Invalid HTTP request: no request line");
+            throw std::invalid_argument("Invalid HTTP request");
         }
-        
-        std::string_view request_line = raw_data.substr(0, line_end);
-        
-        // Parse method, URI, and version from request_line (they are separated by spaces)
+
+        std::string_view headers = raw_data.substr(0, headers_end);
+        req.body = std::string(raw_data.substr(headers_end + 4));
+
+        // ==========================================================
+        // Parse request line
+        // ==========================================================
+        size_t line_end = headers.find("\r\n");
+        if (line_end == std::string_view::npos)
+        {
+            throw std::invalid_argument("Invalid HTTP request line");
+        }
+
+        std::string_view request_line = headers.substr(0, line_end);
+
         size_t method_end = request_line.find(' ');
         size_t uri_end = request_line.find(' ', method_end + 1);
-        
-        if (method_end == std::string_view::npos || uri_end == std::string_view::npos) 
+
+        if (method_end == std::string_view::npos ||
+            uri_end == std::string_view::npos)
         {
-            throw std::invalid_argument("Invalid HTTP request line format");
+            throw std::invalid_argument("Invalid HTTP request line");
         }
-        
+
         req.method = string_to_method(request_line.substr(0, method_end));
-        req.uri = std::string(request_line.substr(method_end + 1, uri_end - method_end - 1));
+        req.uri = std::string(request_line.substr(method_end + 1,
+                                                uri_end - method_end - 1));
         req.version = std::string(request_line.substr(uri_end + 1));
 
-        // 2. Parse headers
-        size_t start = line_end + 2; // skip \r\n
-        while (true) 
-        {
-            line_end = raw_data.find("\r\n", start);
-            if (line_end == std::string_view::npos) 
-                break;
-            
-            // If we found an empty line (\r\n\r\n), headers are finished
-            if (line_end == start) 
-            {
-                start += 2; // jump over the empty line to the body
-                break;
-            }
-            
-            std::string_view header_line = raw_data.substr(start, line_end - start);
-            size_t colon_pos = header_line.find(':');
-            
-            if (colon_pos != std::string_view::npos) 
-            {
-                std::string_view key = header_line.substr(0, colon_pos);
-                std::string_view value = header_line.substr(colon_pos + 1);
-                
-                // Remove leading space from the value (e.g., "Host: localhost" -> "localhost")
-                if (!value.empty() && value[0] == ' ') 
-                {
-                    value.remove_prefix(1);
-                }
-                
-                req.headers[std::string(key)] = std::string(value);
-            }
-            
-            start = line_end + 2;
-        }
+        // ==========================================================
+        // Parse headers
+        // ==========================================================
+        size_t start = line_end + 2;
 
-        // 3. Everything else is the request body (Body)
-        if (start < raw_data.size()) 
+        while (start < headers.size())
         {
-            req.body = std::string(raw_data.substr(start));
+            line_end = headers.find("\r\n", start);
+
+            if (line_end == std::string_view::npos)
+            {
+                line_end = headers.size();
+            }
+
+            std::string_view header_line = headers.substr(start, line_end - start);
+
+            if (!header_line.empty())
+            {
+                size_t colon = header_line.find(':');
+
+                if (colon != std::string_view::npos)
+                {
+                    std::string_view key = header_line.substr(0, colon);
+                    std::string_view value = header_line.substr(colon + 1);
+
+                    while (!value.empty() && value.front() == ' ')
+                    {
+                        value.remove_prefix(1);
+                    }
+
+                    req.headers.emplace(std::string(key), std::string(value));
+                }
+            }
+
+            start = line_end + 2;
         }
 
         return req;
