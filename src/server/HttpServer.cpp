@@ -20,6 +20,12 @@ namespace server
         router_.post(uri, std::move(handler));
     }
 
+    
+    void HttpServer::set_default_handler(Handler handler)
+    {
+        router_.set_default_handler(std::move(handler));
+    }
+
     void HttpServer::listen(uint16_t port) 
     {
         tcp_server_.start(port);
@@ -51,8 +57,8 @@ namespace server
 
                         http::Request req = http::parse_request(raw_request);
                         
-                        std::cout << "[LOG] URI: " << req.uri 
-                                << " | Thread: " << std::this_thread::get_id() << "\n";
+                        //std::cout << "[LOG] URI: " << req.uri 
+                        //        << " | Thread: " << std::this_thread::get_id() << "\n";
                         
                         http::Response res = this->router_.route(req);
                         client_ptr->send(res.serialize());

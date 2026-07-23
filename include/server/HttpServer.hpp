@@ -16,6 +16,8 @@ namespace server
         void get(const std::string& uri, Handler handler);
         void post(const std::string& uri, Handler handler);
 
+        void set_default_handler(Handler handler);
+
         // Main startup method (contains the while loop)
         void listen(uint16_t port);
 
