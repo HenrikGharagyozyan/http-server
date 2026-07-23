@@ -12,11 +12,11 @@ namespace server
     public:
         HttpServer() = default;
 
-        // Прокси-методы для регистрации маршрутов
+        // Proxy methods for registering routes
         void get(const std::string& uri, Handler handler);
         void post(const std::string& uri, Handler handler);
 
-        // Главный метод запуска (содержит тот самый while loop)
+        // Main startup method (contains the while loop)
         void listen(uint16_t port);
 
     private:

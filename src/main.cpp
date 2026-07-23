@@ -10,7 +10,7 @@ int main()
     {
         server::HttpServer app;
         
-        // Регистрируем главную страницу
+        // Register the home page
         app.get("/", [](const http::Request& /*req*/) 
             {
                 http::Response res;
@@ -21,19 +21,19 @@ int main()
                 return res;
             });
 
-        // Регистрируем API эндпоинт
+        // Register the API endpoint
         app.get("/api/users", [](const http::Request& /*req*/) 
             {
                 http::Response res;
                 res.status_code = http::StatusCode::OK;
-                res.body = "{\"users\": [\"Henrik\", \"Arshavir\"]}";
+                res.body = "{\"users\": [\"John\", \"Max\"]}";
                 res.headers["Content-Length"] = std::to_string(res.body.size());
                 res.headers["Content-Type"] = "application/json";
                 return res;
             });
 
         // Run server
-        app.listen(8080)
+        app.listen(8080);
     } 
     catch (const std::exception& e) 
     {

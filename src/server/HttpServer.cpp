@@ -17,12 +17,12 @@ namespace server
 
     void HttpServer::listen(uint16_t port) 
     {
-        // 1. Запускаем TCP-сервер
+        // 1. Start the TCP server
         tcp_server_.start(port);
         std::cout << "HttpServer is listening on port " << port << "...\n";
         std::cout << "Press Ctrl+C to stop.\n\n";
 
-        // 2. Скрываем бесконечный цикл здесь
+        // 2. Hide the infinite loop here
         while (true) 
         {
             Socket client = tcp_server_.accept_connection();
@@ -37,7 +37,7 @@ namespace server
             {
                 http::Request req = http::parse_request(raw_request);
                 
-                // Логгируем каждый успешный запрос для удобства
+                // Log each successful request for convenience
                 std::cout << "[LOG] Request URI: " << req.uri << "\n";
                 
                 http::Response res = router_.route(req);
