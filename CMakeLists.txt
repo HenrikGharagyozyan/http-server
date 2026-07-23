@@ -14,10 +14,14 @@ add_executable(${PROJECT_NAME}
     src/server/Socket.cpp
     src/server/TcpServer.cpp
     src/server/HttpServer.cpp
+    src/server/ThreadPool.cpp
     src/server/Router.cpp
     src/http/Response.cpp
     src/http/Parser.cpp
 )
+
+find_package(Threads REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(${PROJECT_NAME} PRIVATE ${WARNING_FLAGS})

@@ -1,6 +1,11 @@
 #include "server/HttpServer.hpp"
+#include "server/ThreadPool.hpp"
 #include "http/Parser.hpp"
+
 #include <iostream>
+#include <thread>
+#include <memory>
+
 
 namespace server 
 {
@@ -17,42 +22,53 @@ namespace server
 
     void HttpServer::listen(uint16_t port) 
     {
-        // 1. Start the TCP server
         tcp_server_.start(port);
         std::cout << "HttpServer is listening on port " << port << "...\n";
+
+        // Create a thread pool. std::thread::hardware_concurrency() returns
+        // the number of logical cores on your CPU (for example, 8 or 16).
+        size_t threads = std::thread::hardware_concurrency();
+        ThreadPool pool(threads > 0 ? threads : 4); 
+        
+        std::cout << "Thread pool started with " << (threads > 0 ? threads : 4) << " workers.\n";
         std::cout << "Press Ctrl+C to stop.\n\n";
 
-        // 2. Hide the infinite loop here
         while (true) 
         {
+            // 1. The main thread accepts a client
             Socket client = tcp_server_.accept_connection();
-            std::string raw_request = client.recv();
             
-            if (raw_request.empty()) 
-            {
-                continue;
-            }
+            // Wrap the socket in a shared_ptr so it can be safely passed to std::function
+            auto client_ptr = std::make_shared<Socket>(std::move(client));
+            
+            // Enqueue a task in the pool instead of creating a new std::thread
+            pool.enqueue([this, client_ptr]() 
+                {
+                    try 
+                    {
+                        std::string raw_request = client_ptr->recv();
+                        if (raw_request.empty()) return;
 
-            try 
-            {
-                http::Request req = http::parse_request(raw_request);
-                
-                // Log each successful request for convenience
-                std::cout << "[LOG] Request URI: " << req.uri << "\n";
-                
-                http::Response res = router_.route(req);
-                client.send(res.serialize());
-            } 
-            catch (const std::exception& e) 
-            {
-                std::cerr << "[ERROR] Parse/Routing error: " << e.what() << "\n";
-                
-                http::Response res;
-                res.status_code = http::StatusCode::BAD_REQUEST;
-                res.body = "Bad Request";
-                res.headers["Content-Length"] = std::to_string(res.body.size());
-                client.send(res.serialize());
-            }
+                        http::Request req = http::parse_request(raw_request);
+                        
+                        std::cout << "[LOG] URI: " << req.uri 
+                                << " | Thread: " << std::this_thread::get_id() << "\n";
+                        
+                        http::Response res = this->router_.route(req);
+                        client_ptr->send(res.serialize());
+                    } 
+                    catch (const std::exception& e) 
+                    {
+                        std::cerr << "[ERROR] Thread error: " << e.what() << "\n";
+                        http::Response res;
+                        res.status_code = http::StatusCode::BAD_REQUEST;
+                        res.body = "Bad Request";
+                        res.headers["Content-Length"] = std::to_string(res.body.size());
+                        client_ptr->send(res.serialize());
+                    }
+                    // When the shared_ptr is destroyed, it deletes the Socket,
+                    // and the Socket destructor closes the connection.
+                });
         }
     }
 
