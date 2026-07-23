@@ -13,7 +13,7 @@ int main()
     {
         server::HttpServer app;
         
-        // Наш JSON API
+        // Our JSON API
         app.get("/api/users", [](const http::Request& /*req*/) 
             {
                 http::Response res;
@@ -24,16 +24,33 @@ int main()
                 return res;
             });
 
-        // Обработчик статических файлов (Fallback)
+        // Test POST route
+        app.post("/api/echo", [](const http::Request& req) 
+            {
+                http::Response res;
+                
+                // Print to the server console what the client sent us
+                std::cout << "[POST] Received body: " << req.body << "\n";
+
+                res.status_code = http::StatusCode::OK;
+                // Return to the client what it sent us (echo server)
+                res.body = "Server received your data:\n" + req.body;
+                res.headers["Content-Length"] = std::to_string(res.body.size());
+                res.headers["Content-Type"] = "text/plain";
+                
+                return res;
+            });
+
+        // Static file handler (fallback)
         app.set_default_handler([](const http::Request& req) 
             {
                 http::Response res;
                 
-                // Если запрашивают корень "/", отдаем index.html
+                // If the root "/" is requested, serve index.html
                 std::string filepath = (req.uri == "/") ? "/index.html" : req.uri;
                 
-                // Ищем файлы относительно папки запуска (корень проекта)
-                // "../" потому что мы запускаем бинарник из папки build/
+                // Look for files relative to the execution folder (project root)
+                // "../" because we run the binary from the build/ folder
                 std::string full_path = "../public" + filepath; 
 
                 std::string file_content;

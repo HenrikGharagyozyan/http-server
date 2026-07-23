@@ -12,7 +12,7 @@ namespace utils
             return false;
         
         std::ostringstream ss;
-        ss << file.rdbuf(); // Быстрое чтение всего файла
+        ss << file.rdbuf(); // Fast read of the entire file
         out_content = ss.str();
         return true;
     }
