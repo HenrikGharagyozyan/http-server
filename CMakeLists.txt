@@ -13,6 +13,7 @@ add_executable(${PROJECT_NAME}
     src/main.cpp
     src/server/Socket.cpp
     src/server/TcpServer.cpp
+    src/server/HttpServer.cpp
     src/server/Router.cpp
     src/http/Response.cpp
     src/http/Parser.cpp
