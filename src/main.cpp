@@ -2,6 +2,8 @@
 #include "http/Response.hpp"
 
 #include <iostream>
+#include <chrono>
+#include <thread>
 
 
 int main() 
@@ -24,6 +26,8 @@ int main()
         // Register the API endpoint
         app.get("/api/users", [](const http::Request& /*req*/) 
             {
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+
                 http::Response res;
                 res.status_code = http::StatusCode::OK;
                 res.body = "{\"users\": [\"John\", \"Max\"]}";
