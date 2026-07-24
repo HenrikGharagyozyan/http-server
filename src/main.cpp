@@ -3,8 +3,10 @@
 #include "utils/FileSystem.hpp"
 
 #include <iostream>
-#include <chrono>
-#include <thread>
+
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 
 http::Response handle_static_request(const http::Request& req) 
@@ -59,31 +61,79 @@ int main()
     {
         server::HttpServer app;
         
-        // Our JSON API
+        // 1. GET /api/users — Возвращает список пользователей в формате JSON
         app.get("/api/users", [](const http::Request& /*req*/) 
             {
                 http::Response res;
+                
+                // Создаем JSON объект легко и красиво
+                json response_data = {
+                        {"status", "success"},
+                        {"users", {
+                            {{"id", 1}, {"name", "Henrik"}, {"role", "developer"}},
+                            {{"id", 2}, {"name", "Arshavir"}, {"role", "collaborator"}}
+                        }}
+                    };
+
                 res.status_code = http::StatusCode::OK;
-                res.body = "{\"users\": [\"Henrik\", \"Arshavir\"]}";
-                res.headers["Content-Length"] = std::to_string(res.body.size());
+                res.body = response_data.dump(4); // dump(4) красивый форматированный вывод с отступами
                 res.headers["Content-Type"] = "application/json";
+                res.headers["Content-Length"] = std::to_string(res.body.size());
                 return res;
             });
 
-        // Test POST route
-        app.post("/api/echo", [](const http::Request& req) 
+        // 2. POST /api/users — Создание нового пользователя с валидацией JSON
+        app.post("/api/users", [](const http::Request& req) 
             {
                 http::Response res;
-                
-                // Print to the server console what the client sent us
-                std::cout << "[POST] Received body: " << req.body << "\n";
+                res.headers["Content-Type"] = "application/json";
 
-                res.status_code = http::StatusCode::OK;
-                // Return to the client what it sent us (echo server)
-                res.body = "Server received your data:\n" + req.body;
+                try 
+                {
+                    // Парсим входящее тело
+                    json parsed_body = json::parse(req.body);
+
+                    // Проверяем обязательные поля
+                    if (!parsed_body.contains("name") || !parsed_body.contains("role")) 
+                    {
+                        res.status_code = http::StatusCode::BAD_REQUEST;
+                        res.body = json({
+                            {"error", "Bad Request"},
+                            {"message", "Missing 'name' or 'role' fields"}
+                        }).dump();
+                        res.headers["Content-Length"] = std::to_string(res.body.size());
+                        return res;
+                    }
+
+                    std::string name = parsed_body["name"];
+                    std::string role = parsed_body["role"];
+
+                    // Формируем ответ об успешном создании ресурса
+                    json response_data = {
+                        {"status", "created"},
+                        {"message", "User created successfully"},
+                        {"user", {
+                            {"id", 101}, // Имитация сгенерированного ID
+                            {"name", name},
+                            {"role", role}
+                        }}
+                    };
+
+                    res.status_code = http::StatusCode::OK;
+                    res.body = response_data.dump(4);
+
+                } 
+                catch (const json::parse_error& e) 
+                {
+                    // Ошибка парсинга JSON (невалидный синтаксис от клиента)
+                    res.status_code = http::StatusCode::BAD_REQUEST;
+                    res.body = json({
+                        {"error", "Invalid JSON format"},
+                        {"details", e.what()}
+                    }).dump();
+                }
+
                 res.headers["Content-Length"] = std::to_string(res.body.size());
-                res.headers["Content-Type"] = "text/plain";
-                
                 return res;
             });
 
