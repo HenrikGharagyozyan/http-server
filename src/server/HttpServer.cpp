@@ -1,6 +1,7 @@
 #include "server/HttpServer.hpp"
 #include "server/ThreadPool.hpp"
 #include "http/Parser.hpp"
+#include "utils/Logger.hpp"
 
 #include <iostream>
 #include <thread>
@@ -29,15 +30,15 @@ namespace server
     void HttpServer::listen(uint16_t port) 
     {
         tcp_server_.start(port);
-        std::cout << "HttpServer is listening on port " << port << "...\n";
+        LOG_INFO("HttpServer is listening on port {}...", port);
 
         // Create a thread pool. std::thread::hardware_concurrency() returns
         // the number of logical cores on your CPU (for example, 8 or 16).
         size_t threads = std::thread::hardware_concurrency();
         ThreadPool pool(threads > 0 ? threads : 4); 
         
-        std::cout << "Thread pool started with " << (threads > 0 ? threads : 4) << " workers.\n";
-        std::cout << "Press Ctrl+C to stop.\n\n";
+        LOG_INFO("Thread pool started with {} workers.", (threads > 0 ? threads : 4));
+        LOG_INFO("Press Ctrl+C to stop.\n");
 
         while (true) 
         {
@@ -56,16 +57,13 @@ namespace server
                         if (raw_request.empty()) return;
 
                         http::Request req = http::parse_request(raw_request);
-                        
-                        //std::cout << "[LOG] URI: " << req.uri 
-                        //        << " | Thread: " << std::this_thread::get_id() << "\n";
-                        
+
                         http::Response res = this->router_.route(req);
                         client_ptr->send(res.serialize());
                     } 
                     catch (const std::exception& e) 
                     {
-                        std::cerr << "[ERROR] Thread error: " << e.what() << "\n";
+                        LOG_ERROR("Thread error: {}", e.what());
                         http::Response res;
                         res.status_code = http::StatusCode::BAD_REQUEST;
                         res.body = "Bad Request";
