@@ -16,8 +16,17 @@ include(FetchContent)
 FetchContent_Declare(
     json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(json)
+
+# Automatically fetch spdlog via Git repository (immune to 404 release URL issues)
+FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG        v1.14.1
+)
+FetchContent_MakeAvailable(spdlog)
 
 
 add_executable(${PROJECT_NAME} 
@@ -34,7 +43,10 @@ add_executable(${PROJECT_NAME}
     src/handlers/StaticHandler.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(${PROJECT_NAME} PRIVATE 
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
+)
 
 find_package(Threads REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
