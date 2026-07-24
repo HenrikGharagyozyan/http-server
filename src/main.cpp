@@ -1,6 +1,7 @@
 #include "server/HttpServer.hpp"
 #include "handlers/StaticHandler.hpp"
 #include "handlers/UserHandler.hpp"
+#include "utils/Logger.hpp"
 
 #include <iostream>
 
@@ -25,7 +26,7 @@ int main()
     } 
     catch (const std::exception& e) 
     {
-        std::cerr << "Fatal error: " << e.what() << "\n";
+        LOG_ERROR("Fatal error: {}", e.what());
         return 1;
     }
 
