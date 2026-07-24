@@ -12,7 +12,7 @@ endif()
 
 include(FetchContent)
 
-# Автоматически загружаем nlohmann_json
+# Automatically fetch nlohmann_json
 FetchContent_Declare(
     json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
@@ -30,6 +30,8 @@ add_executable(${PROJECT_NAME}
     src/http/Response.cpp
     src/http/Parser.cpp
     src/utils/FileSystem.cpp
+    src/handlers/UserHandler.cpp
+    src/handlers/StaticHandler.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
