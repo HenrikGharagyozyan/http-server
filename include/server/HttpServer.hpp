@@ -2,7 +2,10 @@
 
 #include "server/TcpServer.hpp"
 #include "server/Router.hpp"
+
 #include <string>
+#include <atomic>
+
 
 namespace server 
 {
@@ -19,11 +22,14 @@ namespace server
         void set_default_handler(Handler handler);
 
         // Main startup method (contains the while loop)
-        void listen(uint16_t port);
+        void listen(uint16_t port, size_t thread_count);
+
+        void stop();
 
     private:
         TcpServer tcp_server_;
         Router router_;
+        std::atomic<bool> is_running_{ false };
     };
 
 } // namespace server

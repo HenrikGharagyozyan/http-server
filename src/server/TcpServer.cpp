@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <cstring>
 
+
 namespace server 
 {
 
@@ -50,6 +51,17 @@ namespace server
         }
     }
 
+    
+    void TcpServer::stop()
+    {
+        if (listen_socket_.is_valid())
+        {
+            // SHUT_RDWR закрывает сокет на чтение и запись.
+            // Это заставит блокирующий вызов accept() немедленно вернуть ошибку и проснуться.
+            ::shutdown(listen_socket_.get(), SHUT_RDWR);
+        }
+    }
+    
     Socket TcpServer::accept_connection() 
     {
         sockaddr_in client_addr{};
@@ -60,6 +72,11 @@ namespace server
         
         if (client_fd < 0) 
         {
+            // Если сокет закрыт через shutdown или прерван сигналом, это не фатальная ошибка, мы просто выходим
+            if (errno == EINTR || errno == EBADF || errno == EINVAL) 
+            {
+                return Socket{}; // Возвращаем невалидный сокет
+            }
             throw std::runtime_error("Failed to accept client connection");
         }
 

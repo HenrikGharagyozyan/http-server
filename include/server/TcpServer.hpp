@@ -22,6 +22,9 @@ namespace server
         // Start the server on the specified port
         void start(uint16_t port);
 
+        // Разбудить accept() и остановить прием клиентов
+        void stop();
+
         // Block and wait for a new client
         Socket accept_connection();
 

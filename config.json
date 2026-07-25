@@ -1,0 +1,10 @@
+{
+    "server": {
+        "port": 8080,
+        "threads": 8
+    },
+    "paths": {
+        "public_dir": "../public",
+        "certs_dir": "../certs"
+    }
+}

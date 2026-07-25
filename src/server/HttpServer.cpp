@@ -27,37 +27,38 @@ namespace server
         router_.set_default_handler(std::move(handler));
     }
 
-    void HttpServer::listen(uint16_t port) 
+    
+    void HttpServer::listen(uint16_t port, size_t thread_count)
     {
         tcp_server_.start(port);
         LOG_INFO("HttpServer is listening on port {}...", port);
 
-        // Create a thread pool. std::thread::hardware_concurrency() returns
-        // the number of logical cores on your CPU (for example, 8 or 16).
-        size_t threads = std::thread::hardware_concurrency();
-        ThreadPool pool(threads > 0 ? threads : 4); 
+        ThreadPool pool(thread_count); 
+        LOG_INFO("Thread pool started with {} workers.", thread_count);
         
-        LOG_INFO("Thread pool started with {} workers.", (threads > 0 ? threads : 4));
-        LOG_INFO("Press Ctrl+C to stop.\n");
+        is_running_ = true;
 
-        while (true) 
+        while (is_running_) 
         {
-            // 1. The main thread accepts a client
             Socket client = tcp_server_.accept_connection();
             
-            // Wrap the socket in a shared_ptr so it can be safely passed to std::function
+            // Если мы вернули невалидный сокет из-за остановки сервера, выходим из цикла
+            if (!client.is_valid()) 
+            {
+                break;
+            }
+            
             auto client_ptr = std::make_shared<Socket>(std::move(client));
             
-            // Enqueue a task in the pool instead of creating a new std::thread
             pool.enqueue([this, client_ptr]() 
                 {
                     try 
                     {
                         std::string raw_request = client_ptr->recv();
-                        if (raw_request.empty()) return;
+                        if (raw_request.empty()) 
+                            return;
 
                         http::Request req = http::parse_request(raw_request);
-
                         http::Response res = this->router_.route(req);
                         client_ptr->send(res.serialize());
                     } 
@@ -70,10 +71,19 @@ namespace server
                         res.headers["Content-Length"] = std::to_string(res.body.size());
                         client_ptr->send(res.serialize());
                     }
-                    // When the shared_ptr is destroyed, it deletes the Socket,
-                    // and the Socket destructor closes the connection.
                 });
         }
+        
+        LOG_INFO("Server loop stopped. Waiting for pending tasks to finish...");
+        // При выходе из области видимости 'pool' вызовется деструктор ThreadPool,
+        // который через worker.join() дождется завершения всех текущих соединений.
+        LOG_INFO("Server shutdown gracefully.");
+    }
+
+    void HttpServer::stop()
+    {
+        is_running_ = false;
+        tcp_server_.stop();  // Разблокируем accept_connection
     }
 
 } // namespace server
