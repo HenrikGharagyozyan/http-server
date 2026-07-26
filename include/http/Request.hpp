@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <memory_resource>
 
 namespace http 
 {
@@ -20,13 +21,20 @@ namespace http
     struct Request 
     {
         Method method{ Method::UNKNOWN };
-        std::string uri;
-        std::string version;
+        std::pmr::string uri;
+        std::pmr::string version;
         
         // Hash table for headers (e.g., "Host" -> "localhost:8080")
-        std::unordered_map<std::string, std::string> headers;
+        std::pmr::unordered_map<std::pmr::string, std::pmr::string> headers;
         
-        std::string body;
+        std::pmr::string body;
+
+        // Конструктор, который привязывает все PMR-поля к переданному аллокатору (арене)
+        explicit Request(std::pmr::memory_resource* mr = std::pmr::get_default_resource())
+            : uri(mr), version(mr), headers(mr), body(mr) 
+        {
+        }
+
     };
 
 } // namespace http
