@@ -3,9 +3,11 @@
 #include "http/Parser.hpp"
 #include "utils/Logger.hpp"
 
-#include <iostream>
-#include <thread>
 #include <memory>
+
+#include <MemCore/MallocUpstream.hpp>
+#include <MemCore/ArenaAllocator.hpp>
+#include <MemCore/PmrAdapter.hpp>
 
 
 namespace server 
@@ -52,25 +54,46 @@ namespace server
             
             pool.enqueue([this, client_ptr]() 
                 {
+                    // 1. Апстрим живет вечно для каждого потока (thread_local)
+                    static thread_local MemCore::MallocUpstream upstream;
+                    
+                    // 2. Создаем арену, передавая ей сам апстрим и размер блока (64 КБ).
+                    // Она не выделяет память сразу, а сделает это лениво при первой аллокации.
+                    MemCore::ArenaAllocator arena(upstream, 64 * 1024);
+                    
+                    // 3. Оборачиваем арену в стандартный PMR-интерфейс
+                    MemCore::PmrAdapter pmr_resource(arena);
+
                     try 
                     {
                         std::string raw_request = client_ptr->recv();
                         if (raw_request.empty()) 
-                            return;
+                        {
+                            return; // При выходе из scope деструктор арены сам всё очистит
+                        }
 
-                        http::Request req = http::parse_request(raw_request);
-                        http::Response res = this->router_.route(req);
+                        // 4. Парсер использует pmr_resource для всех внутренних аллокаций
+                        http::Request req(&pmr_resource);
+                        req = http::parse_request(raw_request, &pmr_resource);
+
+                        http::Response res(&pmr_resource);
+                        res = this->router_.route(req);
+                        
                         client_ptr->send(res.serialize());
                     } 
                     catch (const std::exception& e) 
                     {
                         LOG_ERROR("Thread error: {}", e.what());
-                        http::Response res;
+                        http::Response res(&pmr_resource);
                         res.status_code = http::StatusCode::BAD_REQUEST;
                         res.body = "Bad Request";
                         res.headers["Content-Length"] = std::to_string(res.body.size());
                         client_ptr->send(res.serialize());
                     }
+                    
+                    // При выходе из блока вызывается ~ArenaAllocator().
+                    // Он пройдется по своему связному списку (m_head) и вернет все блоки в upstream.
+                    // Никаких утечек, никаких ручных вызовов deallocate!
                 });
         }
         
