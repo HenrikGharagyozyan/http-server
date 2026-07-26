@@ -15,9 +15,10 @@ namespace http
         return Method::UNKNOWN;
     }
 
-    Request parse_request(std::string_view raw_data)
+    Request parse_request(std::string_view raw_data, std::pmr::memory_resource* mr)
     {
-        Request req;
+        // Инициализируем Request нашим PMR-ресурсом
+        Request req(mr);
 
         // ==========================================================
         // Find the end of headers
@@ -29,7 +30,9 @@ namespace http
         }
 
         std::string_view headers = raw_data.substr(0, headers_end);
-        req.body = std::string(raw_data.substr(headers_end + 4));
+        
+        // Аллоцируем body в арене
+        req.body = std::pmr::string(raw_data.substr(headers_end + 4), mr);
 
         // ==========================================================
         // Parse request line
@@ -52,9 +55,10 @@ namespace http
         }
 
         req.method = string_to_method(request_line.substr(0, method_end));
-        req.uri = std::string(request_line.substr(method_end + 1,
-                                                uri_end - method_end - 1));
-        req.version = std::string(request_line.substr(uri_end + 1));
+        
+        // Аллоцируем URI и версию в арене
+        req.uri = std::pmr::string(request_line.substr(method_end + 1, uri_end - method_end - 1), mr);
+        req.version = std::pmr::string(request_line.substr(uri_end + 1), mr);
 
         // ==========================================================
         // Parse headers
@@ -86,7 +90,11 @@ namespace http
                         value.remove_prefix(1);
                     }
 
-                    req.headers.emplace(std::string(key), std::string(value));
+                    // Аллоцируем ключи и значения заголовков в арене перед вставкой в unordered_map
+                    req.headers.emplace(
+                        std::pmr::string(key, mr), 
+                        std::pmr::string(value, mr)
+                    );
                 }
             }
 
