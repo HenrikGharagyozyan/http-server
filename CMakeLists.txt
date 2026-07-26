@@ -9,8 +9,19 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set(WARNING_FLAGS "-Wall" "-Wextra" "-Wpedantic" "-Werror")
 endif()
 
+# Включаем санитайзеры для нашей ветки PMR/MemCore
+add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all)
+add_link_options(-fsanitize=address,undefined)
 
+
+# Подключаем MemCore через FetchContent
 include(FetchContent)
+FetchContent_Declare(
+    MemCore
+    GIT_REPOSITORY https://github.com/HenrikGharagyozyan/MemCore.git
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(MemCore)
 
 # Automatically fetch nlohmann_json
 FetchContent_Declare(
@@ -46,6 +57,7 @@ add_executable(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     nlohmann_json::nlohmann_json
     spdlog::spdlog
+    MemCore::MemCore
 )
 
 find_package(Threads REQUIRED)
