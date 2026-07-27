@@ -17,7 +17,7 @@ namespace http
 
     Request parse_request(std::string_view raw_data, std::pmr::memory_resource* mr)
     {
-        // Инициализируем Request нашим PMR-ресурсом
+        // Initialize Request with our PMR resource
         Request req(mr);
 
         // ==========================================================
@@ -31,7 +31,7 @@ namespace http
 
         std::string_view headers = raw_data.substr(0, headers_end);
         
-        // Аллоцируем body в арене
+        // Allocate body in the arena
         req.body = std::pmr::string(raw_data.substr(headers_end + 4), mr);
 
         // ==========================================================
@@ -56,7 +56,7 @@ namespace http
 
         req.method = string_to_method(request_line.substr(0, method_end));
         
-        // Аллоцируем URI и версию в арене
+        // Allocate URI and version in the arena
         req.uri = std::pmr::string(request_line.substr(method_end + 1, uri_end - method_end - 1), mr);
         req.version = std::pmr::string(request_line.substr(uri_end + 1), mr);
 
@@ -90,7 +90,7 @@ namespace http
                         value.remove_prefix(1);
                     }
 
-                    // Аллоцируем ключи и значения заголовков в арене перед вставкой в unordered_map
+                    // Allocate header keys and values in the arena before inserting into unordered_map
                     req.headers.emplace(
                         std::pmr::string(key, mr), 
                         std::pmr::string(value, mr)

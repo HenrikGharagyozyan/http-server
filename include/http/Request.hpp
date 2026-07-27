@@ -29,7 +29,7 @@ namespace http
         
         std::pmr::string body;
 
-        // Конструктор, который привязывает все PMR-поля к переданному аллокатору (арене)
+        // Constructor that binds all PMR fields to the provided allocator (arena)
         explicit Request(std::pmr::memory_resource* mr = std::pmr::get_default_resource())
             : uri(mr), version(mr), headers(mr), body(mr) 
         {

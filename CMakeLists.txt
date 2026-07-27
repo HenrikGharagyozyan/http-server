@@ -9,12 +9,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set(WARNING_FLAGS "-Wall" "-Wextra" "-Wpedantic" "-Werror")
 endif()
 
-# Включаем санитайзеры для нашей ветки PMR/MemCore
+# Enable sanitizers for our PMR/MemCore branch
 add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all)
 add_link_options(-fsanitize=address,undefined)
 
 
-# Подключаем MemCore через FetchContent
+# Include MemCore via FetchContent
 include(FetchContent)
 FetchContent_Declare(
     MemCore

@@ -26,7 +26,7 @@ namespace server
         if (method_it != routes_.end()) 
         {
             // 2. Find the specific URI (e.g., "/users")
-            // Преобразуем pmr::string во временный std::string для поиска в словаре
+            // Convert pmr::string to a temporary std::string for dictionary lookup
             std::string uri_str(req.uri.data(), req.uri.size());
             auto uri_it = method_it->second.find(uri_str);
             
@@ -41,15 +41,15 @@ namespace server
             return default_handler_(req);
 
         // 3. If no route is found, return 404 (allocating it inside the Arena!)
-        // Извлекаем ресурс памяти (нашу арену) из пришедшего запроса
+        // Extract the memory resource (our arena) from the incoming request
         std::pmr::memory_resource* mr = req.uri.get_allocator().resource();
         
-        // Создаем Response, привязанный к той же арене
+        // Create a Response bound to the same arena
         http::Response res(mr);
         res.status_code = http::StatusCode::NOT_FOUND;
         res.body = "404 Not Found\n";
         
-        // Ключи и значения хеш-таблицы тоже автоматически лягут в арену
+        // Hash table keys and values will also automatically use the arena
         res.headers["Content-Length"] = std::to_string(res.body.size());
         res.headers["Content-Type"] = "text/plain";
         res.headers["Connection"] = "close";

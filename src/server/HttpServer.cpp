@@ -44,7 +44,7 @@ namespace server
         {
             Socket client = tcp_server_.accept_connection();
             
-            // Если мы вернули невалидный сокет из-за остановки сервера, выходим из цикла
+            // If we returned an invalid socket because the server is stopping, break the loop
             if (!client.is_valid()) 
             {
                 break;
@@ -54,14 +54,14 @@ namespace server
             
             pool.enqueue([this, client_ptr]() 
                 {
-                    // 1. Апстрим живет вечно для каждого потока (thread_local)
+                    // 1. The upstream lives forever for each thread (thread_local)
                     static thread_local MemCore::MallocUpstream upstream;
                     
-                    // 2. Создаем арену, передавая ей сам апстрим и размер блока (64 КБ).
-                    // Она не выделяет память сразу, а сделает это лениво при первой аллокации.
+                    // 2. Create an arena with the upstream and block size (64 KB).
+                    // It does not allocate memory immediately; it does so lazily on the first allocation.
                     MemCore::ArenaAllocator arena(upstream, 64 * 1024);
                     
-                    // 3. Оборачиваем арену в стандартный PMR-интерфейс
+                    // 3. Wrap the arena in a standard PMR interface
                     MemCore::PmrAdapter pmr_resource(arena);
 
                     try 
@@ -69,10 +69,10 @@ namespace server
                         std::string raw_request = client_ptr->recv();
                         if (raw_request.empty()) 
                         {
-                            return; // При выходе из scope деструктор арены сам всё очистит
+                            return; // When exiting scope, the arena destructor will clean everything up
                         }
 
-                        // 4. Парсер использует pmr_resource для всех внутренних аллокаций
+                        // 4. The parser uses pmr_resource for all internal allocations
                         http::Request req(&pmr_resource);
                         req = http::parse_request(raw_request, &pmr_resource);
 
@@ -91,22 +91,22 @@ namespace server
                         client_ptr->send(res.serialize());
                     }
                     
-                    // При выходе из блока вызывается ~ArenaAllocator().
-                    // Он пройдется по своему связному списку (m_head) и вернет все блоки в upstream.
-                    // Никаких утечек, никаких ручных вызовов deallocate!
+                    // When leaving the block, ~ArenaAllocator() is called.
+                    // It will walk its linked list (m_head) and return all blocks to upstream.
+                    // No leaks, no manual deallocate calls!
                 });
         }
         
         LOG_INFO("Server loop stopped. Waiting for pending tasks to finish...");
-        // При выходе из области видимости 'pool' вызовется деструктор ThreadPool,
-        // который через worker.join() дождется завершения всех текущих соединений.
+        // When 'pool' goes out of scope, its ThreadPool destructor is called,
+        // which waits for all active connections to finish via worker.join().
         LOG_INFO("Server shutdown gracefully.");
     }
 
     void HttpServer::stop()
     {
         is_running_ = false;
-        tcp_server_.stop();  // Разблокируем accept_connection
+        tcp_server_.stop();  // Unblock accept_connection
     }
 
 } // namespace server

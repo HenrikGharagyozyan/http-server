@@ -56,8 +56,8 @@ namespace server
     {
         if (listen_socket_.is_valid())
         {
-            // SHUT_RDWR закрывает сокет на чтение и запись.
-            // Это заставит блокирующий вызов accept() немедленно вернуть ошибку и проснуться.
+            // SHUT_RDWR shuts the socket down for reading and writing.
+            // This causes the blocking accept() call to return immediately with an error and wake up.
             ::shutdown(listen_socket_.get(), SHUT_RDWR);
         }
     }
@@ -72,10 +72,10 @@ namespace server
         
         if (client_fd < 0) 
         {
-            // Если сокет закрыт через shutdown или прерван сигналом, это не фатальная ошибка, мы просто выходим
+            // If the socket is closed via shutdown or interrupted by a signal, this is not fatal; just exit
             if (errno == EINTR || errno == EBADF || errno == EINVAL) 
             {
-                return Socket{}; // Возвращаем невалидный сокет
+                return Socket{}; // Return an invalid socket
             }
             throw std::runtime_error("Failed to accept client connection");
         }

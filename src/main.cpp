@@ -9,10 +9,10 @@
 
 using json = nlohmann::json;
 
-// Глобальный указатель нужен для перехвата сигналов от ОС
+// Global pointer is needed to catch OS signals
 server::HttpServer* g_app = nullptr;
 
-// Обработчик сигналов (вызывается при нажатии Ctrl+C или команде kill)
+// Signal handler (called on Ctrl+C or kill command)
 void signal_handler(int signal_num) 
 {
     LOG_INFO("Received signal {}. Initiating graceful shutdown...", signal_num);
@@ -24,14 +24,14 @@ void signal_handler(int signal_num)
 
 int main() 
 {
-    // Регистрируем перехват сигналов
+    // Register signal handlers
     std::signal(SIGINT, signal_handler);  // Ctrl+C
-    std::signal(SIGTERM, signal_handler); // Сигнал завершения системы/docker
+    std::signal(SIGTERM, signal_handler); // System/container shutdown signal
 
     try 
     {
-        // 1. Читаем конфигурацию
-        std::ifstream config_file("../config.json"); // Путь зависит от папки запуска (build)
+        // 1. Read configuration
+        std::ifstream config_file("../config.json"); // Path depends on the working directory (build)
         if (!config_file.is_open()) 
         {
             LOG_ERROR("Could not open config.json!");
@@ -42,15 +42,15 @@ int main()
         uint16_t port = config["server"]["port"];
         size_t threads = config["server"]["threads"];
 
-        // 2. Инициализируем сервер
+        // 2. Initialize the server
         server::HttpServer app;
-        g_app = &app; // Передаем ссылку глобальному указателю
+        g_app = &app; // Pass reference to the global pointer
         
         app.get("/api/users", handlers::get_users);
         app.post("/api/users", handlers::create_user);
         app.set_default_handler(handlers::handle_static_request);
 
-        // 3. Запускаем сервер с параметрами из конфига
+        // 3. Start the server with config parameters
         app.listen(port, threads);
     } 
     catch (const json::parse_error& e) 

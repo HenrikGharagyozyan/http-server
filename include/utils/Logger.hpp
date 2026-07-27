@@ -7,12 +7,12 @@
 namespace utils 
 {
 
-    // Получить глобальный потокобезопасный логгер
+    // Get the global thread-safe logger
     inline std::shared_ptr<spdlog::logger>& get_logger() 
     {
         static auto logger = []() 
             {
-                // Создаем цветной консольный логгер (stdout)
+                // Create a colored console logger (stdout)
                 auto l = spdlog::stdout_color_mt("SERVER_LOGGER");
                 l->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [TID %t] %v");
                 l->set_level(spdlog::level::info);
@@ -24,7 +24,7 @@ namespace utils
     
 }
 
-// Макросы для удобного использования во всем проекте
+// Macros for convenient use across the project
 #define LOG_INFO(...)  ::utils::get_logger()->info(__VA_ARGS__)
 #define LOG_WARN(...)  ::utils::get_logger()->warn(__VA_ARGS__)
 #define LOG_ERROR(...) ::utils::get_logger()->error(__VA_ARGS__)
