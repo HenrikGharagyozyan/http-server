@@ -2,6 +2,8 @@
 
 #include <sys/socket.h>
 #include <unistd.h> // For the close() function
+#include <sys/time.h> // For struct timeval
+#include <cerrno>     // For errno, EAGAIN, EWOULDBLOCK
 #include <stdexcept>
 
 
@@ -42,6 +44,19 @@ namespace server
         }
     }
 
+    void Socket::set_rcv_timeout(int seconds)
+    {
+        struct timeval timeout{};
+        timeout.tv_sec = seconds;
+        timeout.tv_usec = 0;
+
+        // Set the SO_RCVTIMEO option on the socket
+        if (::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) 
+        {
+            throw std::runtime_error("Failed to set receive timeout on socket");
+        }
+    }
+
     std::string Socket::recv(size_t max_bytes) 
     {
         std::string buffer(max_bytes, '\0');
@@ -51,6 +66,12 @@ namespace server
         
         if (bytes_received < 0) 
         {
+            // If a timeout occurs, recv returns -1 and errno is EAGAIN or EWOULDBLOCK.
+            // We treat this as a normal end of waiting (no data received from the client).
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNRESET) 
+            {
+                return ""; 
+            }
             throw std::runtime_error("Failed to receive data from socket");
         }
         
