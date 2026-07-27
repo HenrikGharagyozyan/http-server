@@ -7,7 +7,9 @@ namespace handlers
 
     http::Response handle_static_request(const http::Request& req) 
     {
-        http::Response res;
+        // Extract the arena (memory resource) from the request
+        std::pmr::memory_resource* mr = req.uri.get_allocator().resource();
+        http::Response res(mr); // Bind the response to the same arena
         
         if (req.uri.find("..") != std::string_view::npos) 
         {
