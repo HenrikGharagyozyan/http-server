@@ -4,12 +4,16 @@
 
 using json = nlohmann::json;
 
+
 namespace handlers 
 {
 
-    http::Response get_users(const http::Request& /*req*/) 
+    http::Response get_users(const http::Request& req) 
     {
-        http::Response res;
+        // 1. Get our MemCore allocator from the request
+        std::pmr::memory_resource* mr = req.uri.get_allocator().resource();
+
+        http::Response res(mr);
         
         json response_data = {
             {"status", "success"},
@@ -20,6 +24,7 @@ namespace handlers
         };
 
         res.status_code = http::StatusCode::OK;
+        // dump() returns std::string which is immediately copied into our pmr::string
         res.body = response_data.dump(4);
         res.headers["Content-Type"] = "application/json";
         res.headers["Content-Length"] = std::to_string(res.body.size());
@@ -29,7 +34,9 @@ namespace handlers
 
     http::Response create_user(const http::Request& req) 
     {
-        http::Response res;
+        // Similarly bind the response to the arena
+        std::pmr::memory_resource* mr = req.uri.get_allocator().resource();
+        http::Response res(mr);
         res.headers["Content-Type"] = "application/json";
 
         try 
