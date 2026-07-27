@@ -1,9 +1,68 @@
 #include "handlers/StaticHandler.hpp"
 #include "utils/FileSystem.hpp"
+#include "utils/Logger.hpp" // For logging information about cached files
+
 #include <string>
+#include <unordered_map>
+#include <filesystem>
+#include <algorithm> // For std::replace
+
+
+namespace fs = std::filesystem;
 
 namespace handlers 
 {
+    
+    // Structure for storing a cached file
+    struct CachedFile 
+    {
+        std::string content;
+        std::string mime_type;
+    };
+
+    // Our in-memory cache. It is populated only once at server startup,
+    // so reading from it by multiple threads is safe.
+    static std::unordered_map<std::string, CachedFile> s_file_cache;
+
+
+    void init_static_cache(const std::string& public_dir)
+    {
+        if (!fs::exists(public_dir) || !fs::is_directory(public_dir)) 
+        {
+            LOG_ERROR("Static directory '{}' not found!", public_dir);
+            return;
+        }
+
+        // Recursively iterate all files in the folder (e.g., ../public)
+        for (const auto& entry : fs::recursive_directory_iterator(public_dir)) 
+        {
+            if (entry.is_regular_file()) 
+            {
+                std::string filepath = entry.path().string();
+                
+            // Turn the path into a URI route
+            // For example: "../public/css/style.css" -> "/css/style.css"
+            std::string route = filepath.substr(public_dir.length());
+                
+            // Normalize backslashes to forward slashes for Windows compatibility
+            std::replace(route.begin(), route.end(), '\\', '/');
+
+                std::string content;
+                if (utils::read_file(filepath, content)) 
+                {
+                    s_file_cache[route] = { std::move(content), utils::get_mime_type(filepath) };
+                    LOG_INFO("Cached static file: {}", route);
+                }
+            }
+        }
+        
+        // Create an alias for the server root
+        if (s_file_cache.find("/index.html") != s_file_cache.end()) 
+        {
+            s_file_cache["/"] = s_file_cache["/index.html"];
+            LOG_INFO("Cached static file: / (alias for /index.html)");
+        }
+    }
 
     http::Response handle_static_request(const http::Request& req) 
     {
@@ -20,22 +79,17 @@ namespace handlers
             return res;
         }
 
-        std::string filepath = "../public"; 
-        if (req.uri == "/") 
-        {
-            filepath += "/index.html";
-        } 
-        else 
-        {
-            filepath += std::string(req.uri); 
-        }
+        // Temporarily convert pmr::string to std::string for cache lookup
+        std::string uri_str(req.uri.data(), req.uri.size());
 
-        std::string file_content;
-        if (utils::read_file(filepath, file_content)) 
+        // Look up the file in memory (O(1) time)
+        auto it = s_file_cache.find(uri_str);
+        if (it != s_file_cache.end()) 
         {
             res.status_code = http::StatusCode::OK;
-            res.body = std::move(file_content); 
-            res.headers["Content-Type"] = utils::get_mime_type(filepath);
+            // Copy bytes directly into our fast pmr arena
+            res.body = it->second.content; 
+            res.headers["Content-Type"] = it->second.mime_type;
         } 
         else 
         {

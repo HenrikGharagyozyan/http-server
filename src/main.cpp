@@ -46,6 +46,9 @@ int main()
         server::HttpServer app;
         g_app = &app; // Pass reference to the global pointer
         
+        // Load all static files from disk into memory
+        handlers::init_static_cache("../public");
+
         app.get("/api/users", handlers::get_users);
         app.post("/api/users", handlers::create_user);
         app.set_default_handler(handlers::handle_static_request);
