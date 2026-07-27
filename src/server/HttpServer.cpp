@@ -54,46 +54,82 @@ namespace server
             
             pool.enqueue([this, client_ptr]() 
                 {
-                    // 1. The upstream lives forever for each thread (thread_local)
+                    // The upstream lives forever for each thread (thread_local)
                     static thread_local MemCore::MallocUpstream upstream;
-                    
-                    // 2. Create an arena with the upstream and block size (64 KB).
-                    // It does not allocate memory immediately; it does so lazily on the first allocation.
-                    MemCore::ArenaAllocator arena(upstream, 64 * 1024);
-                    
-                    // 3. Wrap the arena in a standard PMR interface
-                    MemCore::PmrAdapter pmr_resource(arena);
 
+                    // Set the Keep-Alive timeout (e.g. 5 seconds of inactivity)
                     try 
                     {
-                        std::string raw_request = client_ptr->recv();
-                        if (raw_request.empty()) 
-                        {
-                            return; // When exiting scope, the arena destructor will clean everything up
-                        }
-
-                        // 4. The parser uses pmr_resource for all internal allocations
-                        http::Request req(&pmr_resource);
-                        req = http::parse_request(raw_request, &pmr_resource);
-
-                        http::Response res(&pmr_resource);
-                        res = this->router_.route(req);
-                        
-                        client_ptr->send(res.serialize());
+                        client_ptr->set_rcv_timeout(5);
                     } 
                     catch (const std::exception& e) 
                     {
-                        LOG_ERROR("Thread error: {}", e.what());
-                        http::Response res(&pmr_resource);
-                        res.status_code = http::StatusCode::BAD_REQUEST;
-                        res.body = "Bad Request";
-                        res.headers["Content-Length"] = std::to_string(res.body.size());
-                        client_ptr->send(res.serialize());
+                        LOG_ERROR("Timeout config error: {}", e.what());
+                        return;
                     }
-                    
-                    // When leaving the block, ~ArenaAllocator() is called.
-                    // It will walk its linked list (m_head) and return all blocks to upstream.
-                    // No leaks, no manual deallocate calls!
+
+
+                    // Start the Keep-Alive loop
+                    while (true) 
+                    {
+                        // The arena is created FOR EACH REQUEST!
+                        // At the end of the loop it is destroyed, returning all memory to upstream.
+                        // No fragmentation during long-lived connections.
+                        MemCore::ArenaAllocator arena(upstream, 64 * 1024);
+                        MemCore::PmrAdapter pmr_resource(arena);
+
+                        try 
+                        {
+                            std::string raw_request = client_ptr->recv();
+                            
+                            // If empty (client closed the connection OR the 5-second timeout fired)
+                            if (raw_request.empty()) 
+                            {
+                                break; // Exit the Keep-Alive loop and close the socket
+                            }
+
+                            http::Request req(&pmr_resource);
+                            req = http::parse_request(raw_request, &pmr_resource);
+
+                            // HTTP/1.1 uses Keep-Alive by default
+                            bool keep_alive = true;
+                            auto it = req.headers.find("Connection");
+                            if (it != req.headers.end()) 
+                            {
+                                // Simple check (ideally should be case-insensitive)
+                                if (it->second == "close" || it->second == "Close") 
+                                {
+                                    keep_alive = false;
+                                }
+                            }
+
+                            http::Response res(&pmr_resource);
+                            res = this->router_.route(req);
+                            
+                            // Set the correct Connection header in the response
+                            if (keep_alive) 
+                                res.headers["Connection"] = "keep-alive";
+                            else 
+                                res.headers["Connection"] = "close";
+                            
+                            client_ptr->send(res.serialize());
+
+                            // If the client requested to close the connection, exit
+                            if (!keep_alive) 
+                                break;
+                        } 
+                        catch (const std::exception& e) 
+                        {
+                            LOG_ERROR("Thread error: {}", e.what());
+                            http::Response res(&pmr_resource);
+                            res.status_code = http::StatusCode::BAD_REQUEST;
+                            res.body = "Bad Request";
+                            res.headers["Content-Length"] = std::to_string(res.body.size());
+                            res.headers["Connection"] = "close";
+                            client_ptr->send(res.serialize());
+                            break; // On parse failure, it is safer to break the connection
+                        }
+                    }
                 });
         }
         
