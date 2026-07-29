@@ -16,10 +16,10 @@ namespace server
 
     
     // C++20 Heterogeneous Lookup: Transparent hasher
-    // Позволяет использовать std::string_view для поиска в unordered_map<std::string, ...>
+    // Allows using std::string_view for lookups in unordered_map<std::string, ...>
     struct StringHash 
     {
-        using is_transparent = void; // Магический флаг, включающий прозрачный поиск
+        using is_transparent = void; // Magic flag enabling transparent lookup
 
         std::size_t operator()(std::string_view sv) const 
         {
@@ -44,7 +44,7 @@ namespace server
 
     private:
         // Two-level hash table: Method -> (URI -> Handler)
-        // Используем наш StringHash и std::equal_to<> для поиска без аллокаций
+        // Use our StringHash and std::equal_to<> for lookup without allocations
         std::unordered_map<
             http::Method, 
             std::unordered_map<std::string, Handler, StringHash, std::equal_to<>>
