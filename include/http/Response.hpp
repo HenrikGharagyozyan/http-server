@@ -10,11 +10,15 @@ namespace http
 
     enum class StatusCode
     {
-        OK                    = 200,
-        BAD_REQUEST           = 400,
-        FORBIDDEN             = 403,
-        NOT_FOUND             = 404,
-        INTERNAL_SERVER_ERROR = 500
+        OK                              = 200,
+        BAD_REQUEST                     = 400,
+        FORBIDDEN                       = 403,
+        NOT_FOUND                       = 404,
+        PAYLOAD_TOO_LARGE               = 413,
+        URI_TOO_LONG                    = 414,
+        REQUEST_HEADER_FIELDS_TOO_LARGE = 431,
+        INTERNAL_SERVER_ERROR           = 500,
+        NOT_IMPLEMENTED                 = 501
     };
 
     // Helper function to avoid writing "OK" or "Not Found" manually
