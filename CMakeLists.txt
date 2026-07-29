@@ -9,13 +9,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set(WARNING_FLAGS "-Wall" "-Wextra" "-Wpedantic" "-Werror")
 endif()
 
-# Enable sanitizers for our PMR/MemCore branch
+# Enable sanitizers
 add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all)
 add_link_options(-fsanitize=address,undefined)
 
-
-# Include MemCore via FetchContent
 include(FetchContent)
+
+# Fetch MemCore
 FetchContent_Declare(
     MemCore
     GIT_REPOSITORY https://github.com/HenrikGharagyozyan/MemCore.git
@@ -23,7 +23,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(MemCore)
 
-# Automatically fetch nlohmann_json
+# Fetch nlohmann_json
 FetchContent_Declare(
     json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
@@ -31,7 +31,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
-# Automatically fetch spdlog via Git repository (immune to 404 release URL issues)
+# Fetch spdlog
 FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
@@ -39,9 +39,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
+# Fetch GoogleTest
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG        v1.14.0
+)
+FetchContent_MakeAvailable(googletest)
 
-add_executable(${PROJECT_NAME} 
-    src/main.cpp
+find_package(Threads REQUIRED)
+
+# 1. CORE LIBRARY: All server logic EXCEPT main.cpp
+add_library(http_server_core 
     src/server/Socket.cpp
     src/server/TcpServer.cpp
     src/server/HttpServer.cpp
@@ -54,14 +63,20 @@ add_executable(${PROJECT_NAME}
     src/handlers/StaticHandler.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE 
+# Use PUBLIC so anything linking to this library inherits these dependencies and includes
+target_link_libraries(http_server_core PUBLIC 
     nlohmann_json::nlohmann_json
     spdlog::spdlog
     MemCore::MemCore
+    Threads::Threads
 )
+target_include_directories(http_server_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(http_server_core PRIVATE ${WARNING_FLAGS})
 
-find_package(Threads REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
+# 2. MAIN EXECUTABLE: Just main.cpp linked to the core library
+add_executable(${PROJECT_NAME} src/main.cpp)
+target_link_libraries(${PROJECT_NAME} PRIVATE http_server_core)
 
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(${PROJECT_NAME} PRIVATE ${WARNING_FLAGS})
+# 3. TESTS: Enable CTest and add the tests subdirectory
+enable_testing()
+add_subdirectory(tests)

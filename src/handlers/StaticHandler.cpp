@@ -69,8 +69,19 @@ namespace handlers
         // Extract the arena (memory resource) from the request
         std::pmr::memory_resource* mr = req.uri.get_allocator().resource();
         http::Response res(mr); // Bind the response to the same arena
-        
-        if (req.uri.find("..") != std::string_view::npos) 
+
+        // Static files can only be fetched: DELETE/POST/etc. must not serve content
+        if (req.method != http::Method::GET)
+        {
+            res.status_code = http::StatusCode::METHOD_NOT_ALLOWED;
+            res.body = "<h1>405 Method Not Allowed</h1>";
+            res.headers["Allow"] = "GET";
+            res.headers["Content-Type"] = "text/html";
+            res.headers["Content-Length"] = std::to_string(res.body.size());
+            return res;
+        }
+
+        if (req.uri.find("..") != std::string_view::npos)
         {
             res.status_code = http::StatusCode::FORBIDDEN;
             res.body = "<h1>403 Forbidden</h1>";
