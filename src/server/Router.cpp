@@ -27,8 +27,10 @@ namespace server
         {
             // 2. Find the specific URI (e.g., "/users")
             // Convert pmr::string to a temporary std::string for dictionary lookup
-            std::string uri_str(req.uri.data(), req.uri.size());
-            auto uri_it = method_it->second.find(uri_str);
+            std::string_view uri_sv(req.uri.data(), req.uri.size());
+            
+            // Благодаря C++20 Heterogeneous Lookup этот find не выделяет память!
+            auto uri_it = method_it->second.find(uri_sv);
             
             if (uri_it != method_it->second.end()) 
             {
