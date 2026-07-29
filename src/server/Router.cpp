@@ -29,7 +29,7 @@ namespace server
             // Convert pmr::string to a temporary std::string for dictionary lookup
             std::string_view uri_sv(req.uri.data(), req.uri.size());
             
-            // Благодаря C++20 Heterogeneous Lookup этот find не выделяет память!
+            // Thanks to C++20 heterogeneous lookup, this find does not allocate memory!
             auto uri_it = method_it->second.find(uri_sv);
             
             if (uri_it != method_it->second.end()) 

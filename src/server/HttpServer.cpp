@@ -10,6 +10,43 @@
 #include <MemCore/PmrAdapter.hpp>
 
 
+namespace 
+{
+    size_t extract_content_length(std::string_view headers) 
+    {
+        const std::string_view search_str = "content-length:";
+        // Case-insensitive search
+        auto it = std::search(
+            headers.begin(), headers.end(),
+            search_str.begin(), search_str.end(),
+            [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }
+        );
+
+        if (it != headers.end()) 
+        {
+            std::string_view val(it + search_str.size(), headers.end() - (it + search_str.size()));
+            size_t start = val.find_first_not_of(" \t"); // Skip spaces after the colon
+            if (start != std::string_view::npos) 
+            {
+                size_t end = val.find("\r\n", start);
+                if (end != std::string_view::npos) 
+                {
+                    try 
+                    {
+                        return std::stoull(std::string(val.substr(start, end - start)));
+                    } 
+                    catch (...) 
+                    {
+        
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+}
+
+
 namespace server 
 {
 
@@ -68,6 +105,10 @@ namespace server
                         return;
                     }
 
+                    // CONNECTION BUFFER: lives outside the Keep-Alive loop!
+                    // Retains data between requests (pipelining)
+                    std::string connection_buffer;
+                    connection_buffer.reserve(8192);
 
                     // Start the Keep-Alive loop
                     while (true) 
@@ -80,51 +121,76 @@ namespace server
 
                         try 
                         {
-                            std::string raw_request = client_ptr->recv();
-                            
-                            // If empty (client closed the connection OR the 5-second timeout fired)
-                            if (raw_request.empty()) 
+                            // === PHASE 1: Read headers until \r\n\r\n ===
+                            size_t headers_end = std::string::npos;
+                            while ((headers_end = connection_buffer.find("\r\n\r\n")) == std::string::npos) 
                             {
-                                break; // Exit the Keep-Alive loop and close the socket
+                                std::string chunk = client_ptr->recv(4096);
+                                if (chunk.empty()) 
+                                    break; 
+                                connection_buffer.append(chunk);
                             }
+
+                            // Normal connection close by the client
+                            if (connection_buffer.empty()) 
+                                break;
+
+                            // Connection dropped in the middle of headers
+                            if (headers_end == std::string::npos) 
+                            {
+                                LOG_ERROR("Connection closed before full headers received.");
+                                break;
+                            }
+
+                            // === PHASE 2: Look for Content-Length ===
+                            std::string_view headers_view(connection_buffer.data(), headers_end);
+                            size_t content_length = extract_content_length(headers_view);
+                            size_t total_expected_size = headers_end + 4 + content_length;
+
+                            // === PHASE 3: Read the rest of the request body ===
+                            while (connection_buffer.size() < total_expected_size) 
+                            {
+                                std::string chunk = client_ptr->recv(4096);
+                                if (chunk.empty()) 
+                                {
+                                    throw std::runtime_error("Connection dropped while reading body");
+                                }
+                                connection_buffer.append(chunk);
+                            }
+
+                            // === PHASE 4: Slice and hand over to the parser ===
+                            // Extract exactly one complete request
+                            std::string raw_request = connection_buffer.substr(0, total_expected_size);
+                            
+                            // REMOVE it from the buffer. If the client sent 2 requests at once,
+                            // the start of the second one is now safely kept in connection_buffer!
+                            connection_buffer.erase(0, total_expected_size);
 
                             http::Request req(&pmr_resource);
                             req = http::parse_request(raw_request, &pmr_resource);
 
-                            // HTTP/1.1 uses Keep-Alive by default
+                            // Handle Keep-Alive
                             bool keep_alive = true;
                             auto it = req.headers.find("Connection");
                             if (it != req.headers.end()) 
                             {
-                                // Simple check (ideally should be case-insensitive)
-                                if (it->second == "close" || it->second == "Close") 
-                                {
-                                    keep_alive = false;
-                                }
+                                if (it->second == "close" || it->second == "Close") keep_alive = false;
                             }
 
                             http::Response res(&pmr_resource);
                             res = this->router_.route(req);
                             
-                            // Set the correct Connection header in the response
-                            if (keep_alive) 
-                                res.headers["Connection"] = "keep-alive";
-                            else 
-                                res.headers["Connection"] = "close";
-                            
+                            res.headers["Connection"] = keep_alive ? "keep-alive" : "close";
                             client_ptr->send(res.serialize());
 
-                            // If the client requested to close the connection, exit
                             if (!keep_alive) 
                                 break;
+                            
                         } 
                         catch (const std::exception& e) 
                         {
                             LOG_ERROR("Thread error: {}", e.what());
                             
-                            // Safe send of 400 Bad Request.
-                            // If the socket has already disconnected, send() will throw an exception.
-                            // We catch it here so it does not bring down the whole server via std::terminate.
                             try 
                             {
                                 http::Response res(&pmr_resource);
@@ -139,7 +205,7 @@ namespace server
                                 LOG_ERROR("Failed to send 400 Bad Request to client: {}", send_err.what());
                             }
 
-                            break; // On parse error always close the connection
+                            break; // On parse error, always terminate the connection
                         }
                     }
                 });
