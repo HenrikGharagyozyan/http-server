@@ -40,7 +40,9 @@ namespace http
         size_t line_end = headers.find("\r\n");
         if (line_end == std::string_view::npos)
         {
-            throw std::invalid_argument("Invalid HTTP request line");
+            // A request with zero headers is valid: the request line is
+            // terminated directly by the \r\n\r\n and fills the whole block
+            line_end = headers.size();
         }
 
         std::string_view request_line = headers.substr(0, line_end);
