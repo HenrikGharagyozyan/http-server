@@ -1,14 +1,20 @@
 #include "utils/FileSystem.hpp"
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
-namespace utils 
+namespace utils
 {
 
-    bool read_file(const std::string& path, std::string& out_content) 
+    bool read_file(const std::string& path, std::string& out_content)
     {
+        // ifstream happily "opens" a directory on Linux, so check the type first
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec))
+            return false;
+
         std::ifstream file(path, std::ios::binary);
-        if (!file) 
+        if (!file)
             return false;
         
         std::ostringstream ss;
