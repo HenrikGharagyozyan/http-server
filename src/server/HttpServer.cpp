@@ -4,6 +4,10 @@
 #include "utils/Logger.hpp"
 
 #include <memory>
+#include <charconv>
+#include <algorithm> // For std::search
+#include <cctype>   // For std::tolower
+#include <memory_resource>
 
 #include <MemCore/MallocUpstream.hpp>
 #include <MemCore/ArenaAllocator.hpp>
@@ -12,38 +16,111 @@
 
 namespace 
 {
-    size_t extract_content_length(std::string_view headers) 
-    {
-        const std::string_view search_str = "content-length:";
-        // Case-insensitive search
-        auto it = std::search(
-            headers.begin(), headers.end(),
-            search_str.begin(), search_str.end(),
-            [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }
-        );
 
-        if (it != headers.end()) 
+    // --- Лимиты безопасности ---
+    constexpr size_t MAX_HEADER_SIZE = 16 * 1024;        // 16 KB
+    constexpr size_t MAX_BODY_SIZE   = 10 * 1024 * 1024; // 10 MB
+    constexpr size_t MAX_URI_SIZE    = 8 * 1024;         // 8 KB
+
+
+    struct HeaderInspection 
+    {
+        size_t content_length = 0;
+        bool has_content_length = false;
+        bool is_chunked = false;
+        bool invalid = false; // Устанавливается при дубликатах, нечисловых значениях или переполнении
+    };
+
+    HeaderInspection inspect_headers(std::string_view headers) 
+    {
+        HeaderInspection info;
+        size_t pos = 0;
+
+        auto iequals = [](std::string_view a, std::string_view b) 
+                            {
+                                return std::equal(a.begin(), a.end(), b.begin(), b.end(),
+                                    [](char c1, char c2) { return std::tolower(c1) == std::tolower(c2); });
+                            };
+
+        while (pos < headers.size()) 
         {
-            std::string_view val(it + search_str.size(), headers.end() - (it + search_str.size()));
-            size_t start = val.find_first_not_of(" \t"); // Skip spaces after the colon
-            if (start != std::string_view::npos) 
+            size_t next = headers.find("\r\n", pos);
+            std::string_view line = (next == std::string_view::npos) 
+                ? headers.substr(pos) 
+                : headers.substr(pos, next - pos);
+
+            pos = (next == std::string_view::npos) ? headers.size() : next + 2;
+
+            if (line.empty()) 
+                continue;
+
+            size_t colon = line.find(':');
+            if (colon == std::string_view::npos) 
+                continue;
+
+            std::string_view key = line.substr(0, colon);
+            std::string_view val = line.substr(colon + 1);
+
+            // Убираем ведущие и замыкающие пробелы
+            while (!val.empty() && (val.front() == ' ' || val.front() == '\t')) val.remove_prefix(1);
+            while (!val.empty() && (val.back() == ' ' || val.back() == '\t'))   val.remove_suffix(1);
+
+            if (iequals(key, "Content-Length")) 
             {
-                size_t end = val.find("\r\n", start);
-                if (end != std::string_view::npos) 
+                // Защита от HTTP Request Smuggling
+                if (info.has_content_length) 
                 {
-                    try 
-                    {
-                        return std::stoull(std::string(val.substr(start, end - start)));
-                    } 
-                    catch (...) 
-                    {
-        
-                    }
+                    info.invalid = true;
+                    return info;
+                }
+                info.has_content_length = true;
+
+                if (val.empty()) 
+                {
+                    info.invalid = true;
+                    return info;
+                }
+
+                size_t parsed_val = 0;
+                auto [ptr, ec] = std::from_chars(val.data(), val.data() + val.size(), parsed_val);
+                
+                if (ec != std::errc{} || ptr != val.data() + val.size()) 
+                {
+                    info.invalid = true;
+                    return info;
+                }
+                info.content_length = parsed_val;
+            } 
+            else if (iequals(key, "Transfer-Encoding")) 
+            {
+                if (val.find("chunked") != std::string_view::npos) 
+                {
+                    info.is_chunked = true;
                 }
             }
         }
-        return 0;
+
+        return info;
     }
+
+    // Вспомогательная функция для быстрой отправки ошибок клиенту
+    void send_rejection(server::Socket* socket, std::pmr::memory_resource* pmr, http::StatusCode code, std::string_view body) 
+    {
+        try 
+        {
+            http::Response res(pmr);
+            res.status_code = code;
+            res.body = std::string(body); // Конвертируем string_view в string
+            res.headers["Content-Length"] = std::to_string(res.body.size());
+            res.headers["Connection"] = "close";
+            socket->send(res.serialize());
+        } 
+        catch (...) 
+        {
+            // Игнорируем ошибки сокета при отправке отказа
+        }
+    }
+
 }
 
 
@@ -59,7 +136,6 @@ namespace server
     {
         router_.post(uri, std::move(handler));
     }
-
     
     void HttpServer::set_default_handler(Handler handler)
     {
@@ -91,10 +167,8 @@ namespace server
             
             pool.enqueue([this, client_ptr]() 
                 {
-                    // The upstream lives forever for each thread (thread_local)
                     static thread_local MemCore::MallocUpstream upstream;
 
-                    // Set the Keep-Alive timeout (e.g. 5 seconds of inactivity)
                     try 
                     {
                         client_ptr->set_rcv_timeout(5);
@@ -105,49 +179,76 @@ namespace server
                         return;
                     }
 
-                    // CONNECTION BUFFER: lives outside the Keep-Alive loop!
-                    // Retains data between requests (pipelining)
                     std::string connection_buffer;
                     connection_buffer.reserve(8192);
 
-                    // Start the Keep-Alive loop
                     while (true) 
                     {
-                        // The arena is created FOR EACH REQUEST!
-                        // At the end of the loop it is destroyed, returning all memory to upstream.
-                        // No fragmentation during long-lived connections.
                         MemCore::ArenaAllocator arena(upstream, 64 * 1024);
                         MemCore::PmrAdapter pmr_resource(arena);
 
                         try 
                         {
-                            // === PHASE 1: Read headers until \r\n\r\n ===
+                            // === PHASE 1: Чтение заголовков с проверкой лимитов ===
                             size_t headers_end = std::string::npos;
                             while ((headers_end = connection_buffer.find("\r\n\r\n")) == std::string::npos) 
                             {
+                                // Проверка лимитов ПЕРЕД чтением новых байтов
+                                if (connection_buffer.size() > MAX_HEADER_SIZE) 
+                                {
+                                    size_t first_line_end = connection_buffer.find("\r\n");
+                                    if (first_line_end != std::string::npos && first_line_end > MAX_URI_SIZE) 
+                                    {
+                                        send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::URI_TOO_LONG, "URI Too Long");
+                                    } 
+                                    else 
+                                    {
+                                        send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::HEADER_FIELDS_TOO_LARGE, "Headers Too Large");
+                                    }
+                                    return; // Сразу убиваем соединение
+                                }
+
                                 std::string chunk = client_ptr->recv(4096);
                                 if (chunk.empty()) 
                                     break; 
                                 connection_buffer.append(chunk);
                             }
 
-                            // Normal connection close by the client
                             if (connection_buffer.empty()) 
-                                break;
+                                break; // Обычное закрытие соединения
 
-                            // Connection dropped in the middle of headers
                             if (headers_end == std::string::npos) 
                             {
                                 LOG_ERROR("Connection closed before full headers received.");
                                 break;
                             }
 
-                            // === PHASE 2: Look for Content-Length ===
+                            // === PHASE 2: Инспекция заголовков ===
                             std::string_view headers_view(connection_buffer.data(), headers_end);
-                            size_t content_length = extract_content_length(headers_view);
-                            size_t total_expected_size = headers_end + 4 + content_length;
+                            HeaderInspection info = inspect_headers(headers_view);
 
-                            // === PHASE 3: Read the rest of the request body ===
+                            if (info.invalid) 
+                            {
+                                LOG_ERROR("Malformed or duplicate Content-Length header.");
+                                send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::BAD_REQUEST, "Bad Request");
+                                break;
+                            }
+
+                            if (info.is_chunked) 
+                            {
+                                send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::NOT_IMPLEMENTED, "Transfer-Encoding: chunked is not implemented");
+                                break;
+                            }
+
+                            if (info.content_length > MAX_BODY_SIZE) 
+                            {
+                                send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::PAYLOAD_TOO_LARGE, "Payload Too Large");
+                                break;
+                            }
+
+                            size_t total_expected_size = headers_end + 4 + info.content_length;
+
+                            // === PHASE 3: Чтение тела до конца ===
                             while (connection_buffer.size() < total_expected_size) 
                             {
                                 std::string chunk = client_ptr->recv(4096);
@@ -158,23 +259,19 @@ namespace server
                                 connection_buffer.append(chunk);
                             }
 
-                            // === PHASE 4: Slice and hand over to the parser ===
-                            // Extract exactly one complete request
+                            // === PHASE 4: Парсинг и роутинг ===
                             std::string raw_request = connection_buffer.substr(0, total_expected_size);
-                            
-                            // REMOVE it from the buffer. If the client sent 2 requests at once,
-                            // the start of the second one is now safely kept in connection_buffer!
                             connection_buffer.erase(0, total_expected_size);
 
                             http::Request req(&pmr_resource);
                             req = http::parse_request(raw_request, &pmr_resource);
 
-                            // Handle Keep-Alive
                             bool keep_alive = true;
                             auto it = req.headers.find("Connection");
                             if (it != req.headers.end()) 
                             {
-                                if (it->second == "close" || it->second == "Close") keep_alive = false;
+                                if (it->second == "close" || it->second == "Close") 
+                                    keep_alive = false;
                             }
 
                             http::Response res(&pmr_resource);
@@ -190,22 +287,8 @@ namespace server
                         catch (const std::exception& e) 
                         {
                             LOG_ERROR("Thread error: {}", e.what());
-                            
-                            try 
-                            {
-                                http::Response res(&pmr_resource);
-                                res.status_code = http::StatusCode::BAD_REQUEST;
-                                res.body = "Bad Request";
-                                res.headers["Content-Length"] = std::to_string(res.body.size());
-                                res.headers["Connection"] = "close";
-                                client_ptr->send(res.serialize());
-                            } 
-                            catch (const std::exception& send_err) 
-                            {
-                                LOG_ERROR("Failed to send 400 Bad Request to client: {}", send_err.what());
-                            }
-
-                            break; // On parse error, always terminate the connection
+                            send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::BAD_REQUEST, "Bad Request");
+                            break;
                         }
                     }
                 });

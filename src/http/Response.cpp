@@ -5,18 +5,6 @@
 namespace http 
 {
 
-    std::string get_status_message(StatusCode code) 
-    {
-        switch (code) 
-        {
-            case StatusCode::OK:                    return "OK";
-            case StatusCode::BAD_REQUEST:           return "Bad Request";
-            case StatusCode::NOT_FOUND:             return "Not Found";
-            case StatusCode::INTERNAL_SERVER_ERROR: return "Internal Server Error";
-            default:                                return "Unknown";
-        }
-    }
-
     std::string Response::serialize() const 
     {
         std::ostringstream oss;

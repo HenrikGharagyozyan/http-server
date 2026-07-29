@@ -30,6 +30,7 @@ namespace server
         TcpServer tcp_server_;
         Router router_;
         std::atomic<bool> is_running_{ false };
+
     };
 
 } // namespace server
