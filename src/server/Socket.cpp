@@ -93,7 +93,8 @@ namespace server
         // Ensure we send all bytes
         while (total_sent < data.size()) 
         {
-            ssize_t sent = ::send(fd_, data.data() + total_sent, data.size() - total_sent, 0);
+            // Use MSG_NOSIGNAL so Linux does not raise SIGPIPE on connection reset
+            ssize_t sent = ::send(fd_, data.data() + total_sent, data.size() - total_sent, MSG_NOSIGNAL);
             
             if (sent < 0) 
             {

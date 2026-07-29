@@ -121,13 +121,25 @@ namespace server
                         catch (const std::exception& e) 
                         {
                             LOG_ERROR("Thread error: {}", e.what());
-                            http::Response res(&pmr_resource);
-                            res.status_code = http::StatusCode::BAD_REQUEST;
-                            res.body = "Bad Request";
-                            res.headers["Content-Length"] = std::to_string(res.body.size());
-                            res.headers["Connection"] = "close";
-                            client_ptr->send(res.serialize());
-                            break; // On parse failure, it is safer to break the connection
+                            
+                            // Safe send of 400 Bad Request.
+                            // If the socket has already disconnected, send() will throw an exception.
+                            // We catch it here so it does not bring down the whole server via std::terminate.
+                            try 
+                            {
+                                http::Response res(&pmr_resource);
+                                res.status_code = http::StatusCode::BAD_REQUEST;
+                                res.body = "Bad Request";
+                                res.headers["Content-Length"] = std::to_string(res.body.size());
+                                res.headers["Connection"] = "close";
+                                client_ptr->send(res.serialize());
+                            } 
+                            catch (const std::exception& send_err) 
+                            {
+                                LOG_ERROR("Failed to send 400 Bad Request to client: {}", send_err.what());
+                            }
+
+                            break; // On parse error always close the connection
                         }
                     }
                 });
