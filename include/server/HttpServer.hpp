@@ -30,6 +30,10 @@ namespace server
         TcpServer tcp_server_;
         Router router_;
         std::atomic<bool> is_running_{ false };
+
+        // --- Safety limits ---
+        static constexpr size_t MAX_HEADER_SIZE = 8192;           // 8 KB
+        static constexpr size_t MAX_BODY_SIZE = 2 * 1024 * 1024;  // 2 MB
     };
 
 } // namespace server
