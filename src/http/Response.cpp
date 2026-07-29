@@ -5,23 +5,6 @@
 namespace http 
 {
 
-    std::string get_status_message(StatusCode code) 
-    {
-        switch (code) 
-        {
-            case StatusCode::OK:                              return "OK";
-            case StatusCode::BAD_REQUEST:                     return "Bad Request";
-            case StatusCode::FORBIDDEN:                       return "Forbidden";
-            case StatusCode::NOT_FOUND:                       return "Not Found";
-            case StatusCode::PAYLOAD_TOO_LARGE:               return "Payload Too Large";
-            case StatusCode::URI_TOO_LONG:                    return "URI Too Long";
-            case StatusCode::REQUEST_HEADER_FIELDS_TOO_LARGE: return "Request Header Fields Too Large";
-            case StatusCode::INTERNAL_SERVER_ERROR:           return "Internal Server Error";
-            case StatusCode::NOT_IMPLEMENTED:                 return "Not Implemented";
-            default:                                          return "Unknown";
-        }
-    }
-
     std::string Response::serialize() const 
     {
         std::ostringstream oss;
