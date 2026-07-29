@@ -13,9 +13,10 @@ using json = nlohmann::json;
 server::HttpServer* g_app = nullptr;
 
 // Signal handler (called on Ctrl+C or kill command)
-void signal_handler(int signal_num) 
+// Signal handlers must only call async-signal-safe operations.
+// Logging (spdlog) is forbidden here because of mutex deadlock risk.
+void signal_handler(int /*signal_num*/) 
 {
-    LOG_INFO("Received signal {}. Initiating graceful shutdown...", signal_num);
     if (g_app) 
     {
         g_app->stop();
@@ -24,7 +25,11 @@ void signal_handler(int signal_num)
 
 int main() 
 {
-    // Register signal handlers
+    // 1. Ignore SIGPIPE at the process-wide level.
+    // If the client breaks the connection, the process won't crash and send() returns EPIPE.
+    std::signal(SIGPIPE, SIG_IGN);
+
+    // 2. Register handlers for clean shutdown
     std::signal(SIGINT, signal_handler);  // Ctrl+C
     std::signal(SIGTERM, signal_handler); // System/container shutdown signal
 
