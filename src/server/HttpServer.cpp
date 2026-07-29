@@ -17,7 +17,7 @@
 namespace 
 {
 
-    // --- Лимиты безопасности ---
+    // --- Safety limits ---
     constexpr size_t MAX_HEADER_SIZE = 16 * 1024;        // 16 KB
     constexpr size_t MAX_BODY_SIZE   = 10 * 1024 * 1024; // 10 MB
     constexpr size_t MAX_URI_SIZE    = 8 * 1024;         // 8 KB
@@ -28,7 +28,7 @@ namespace
         size_t content_length = 0;
         bool has_content_length = false;
         bool is_chunked = false;
-        bool invalid = false; // Устанавливается при дубликатах, нечисловых значениях или переполнении
+        bool invalid = false; // Set for duplicates, non-numeric values, or overflow
     };
 
     HeaderInspection inspect_headers(std::string_view headers) 
@@ -61,13 +61,13 @@ namespace
             std::string_view key = line.substr(0, colon);
             std::string_view val = line.substr(colon + 1);
 
-            // Убираем ведущие и замыкающие пробелы
+            // Trim leading and trailing spaces
             while (!val.empty() && (val.front() == ' ' || val.front() == '\t')) val.remove_prefix(1);
             while (!val.empty() && (val.back() == ' ' || val.back() == '\t'))   val.remove_suffix(1);
 
             if (iequals(key, "Content-Length")) 
             {
-                // Защита от HTTP Request Smuggling
+                // Protection against HTTP request smuggling
                 if (info.has_content_length) 
                 {
                     info.invalid = true;
@@ -103,21 +103,21 @@ namespace
         return info;
     }
 
-    // Вспомогательная функция для быстрой отправки ошибок клиенту
+    // Helper function for quickly sending errors to the client
     void send_rejection(server::Socket* socket, std::pmr::memory_resource* pmr, http::StatusCode code, std::string_view body) 
     {
         try 
         {
             http::Response res(pmr);
             res.status_code = code;
-            res.body = std::string(body); // Конвертируем string_view в string
+            res.body = std::string(body); // Convert string_view to string
             res.headers["Content-Length"] = std::to_string(res.body.size());
             res.headers["Connection"] = "close";
             socket->send(res.serialize());
         } 
         catch (...) 
         {
-            // Игнорируем ошибки сокета при отправке отказа
+            // Ignore socket errors when sending rejection responses
         }
     }
 
@@ -189,11 +189,11 @@ namespace server
 
                         try 
                         {
-                            // === PHASE 1: Чтение заголовков с проверкой лимитов ===
+                            // === PHASE 1: Read headers with limit checking ===
                             size_t headers_end = std::string::npos;
                             while ((headers_end = connection_buffer.find("\r\n\r\n")) == std::string::npos) 
                             {
-                                // Проверка лимитов ПЕРЕД чтением новых байтов
+                                // Check limits BEFORE reading new bytes
                                 if (connection_buffer.size() > MAX_HEADER_SIZE) 
                                 {
                                     size_t first_line_end = connection_buffer.find("\r\n");
@@ -205,7 +205,7 @@ namespace server
                                     {
                                         send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::HEADER_FIELDS_TOO_LARGE, "Headers Too Large");
                                     }
-                                    return; // Сразу убиваем соединение
+                                    return; // Immediately terminate the connection
                                 }
 
                                 std::string chunk = client_ptr->recv(4096);
@@ -215,7 +215,7 @@ namespace server
                             }
 
                             if (connection_buffer.empty()) 
-                                break; // Обычное закрытие соединения
+                                break; // Normal connection close
 
                             if (headers_end == std::string::npos) 
                             {
@@ -223,7 +223,7 @@ namespace server
                                 break;
                             }
 
-                            // === PHASE 2: Инспекция заголовков ===
+                            // === PHASE 2: Inspect headers ===
                             std::string_view headers_view(connection_buffer.data(), headers_end);
                             HeaderInspection info = inspect_headers(headers_view);
 
@@ -248,7 +248,7 @@ namespace server
 
                             size_t total_expected_size = headers_end + 4 + info.content_length;
 
-                            // === PHASE 3: Чтение тела до конца ===
+                            // === PHASE 3: Read the body to completion ===
                             while (connection_buffer.size() < total_expected_size) 
                             {
                                 std::string chunk = client_ptr->recv(4096);
@@ -259,7 +259,7 @@ namespace server
                                 connection_buffer.append(chunk);
                             }
 
-                            // === PHASE 4: Парсинг и роутинг ===
+                            // === PHASE 4: Parsing and routing ===
                             std::string raw_request = connection_buffer.substr(0, total_expected_size);
                             connection_buffer.erase(0, total_expected_size);
 

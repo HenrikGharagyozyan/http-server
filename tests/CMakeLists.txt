@@ -1,14 +1,14 @@
-# Создаем исполняемый файл для тестов
+# Create the test executable
 add_executable(http-server-tests
     ParserTest.cpp
 )
 
-# Линкуем ядро нашего сервера и GTest (gtest_main содержит функцию main() для тестов)
+# Link our server core and GTest (gtest_main provides main() for tests)
 target_link_libraries(http-server-tests PRIVATE
     http_server_core
     GTest::gtest_main
 )
 
-# Интеграция с CTest
+# Integrate with CTest
 include(GoogleTest)
 gtest_discover_tests(http-server-tests)
