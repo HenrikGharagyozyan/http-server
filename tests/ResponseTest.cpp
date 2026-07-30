@@ -55,7 +55,7 @@ TEST(ResponseSerializeTest, EmptyResponseIsStatusLinePlusBlankLine)
 {
     http::Response res;
 
-    EXPECT_EQ(res.serialize(), "HTTP/1.1 200 OK\r\n\r\n");
+    EXPECT_EQ(res.serialize(), "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
 }
 
 TEST(ResponseSerializeTest, SingleHeaderAndBodyExactFormat)
