@@ -1,6 +1,7 @@
 #pragma once
 
 #include "http/HttpStatus.hpp"
+#include "http/HeaderMap.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -14,7 +15,7 @@ namespace http
     {
         StatusCode status_code{ StatusCode::OK };
         
-        std::pmr::unordered_map<std::pmr::string, std::pmr::string> headers;
+        HeaderMap headers;
         std::pmr::string body;
 
 
