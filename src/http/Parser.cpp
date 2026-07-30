@@ -8,10 +8,11 @@ namespace http
     // Helper function to convert string to enum Method
     static Method string_to_method(std::string_view method_str) 
     {
-        if (method_str == "GET") return Method::GET;
-        if (method_str == "POST") return Method::POST;
-        if (method_str == "PUT") return Method::PUT;
+        if (method_str == "GET")    return Method::GET;
+        if (method_str == "POST")   return Method::POST;
+        if (method_str == "PUT")    return Method::PUT;
         if (method_str == "DELETE") return Method::DELETE;
+
         return Method::UNKNOWN;
     }
 
@@ -57,9 +58,16 @@ namespace http
         }
 
         req.method = string_to_method(request_line.substr(0, method_end));
+
+        // Отрезаем query-параметры (всё что после '?')
+        std::string_view raw_uri = request_line.substr(method_end + 1, uri_end - method_end - 1);
+        size_t query_pos = raw_uri.find('?');
+        if (query_pos != std::string_view::npos) 
+        {
+            raw_uri = raw_uri.substr(0, query_pos); // Берем только часть до '?'
+        }
         
-        // Allocate URI and version in the arena
-        req.uri = std::pmr::string(request_line.substr(method_end + 1, uri_end - method_end - 1), mr);
+        req.uri = std::pmr::string(raw_uri, mr);
         req.version = std::pmr::string(request_line.substr(uri_end + 1), mr);
 
         // ==========================================================
@@ -72,9 +80,7 @@ namespace http
             line_end = headers.find("\r\n", start);
 
             if (line_end == std::string_view::npos)
-            {
                 line_end = headers.size();
-            }
 
             std::string_view header_line = headers.substr(start, line_end - start);
 
@@ -88,15 +94,11 @@ namespace http
                     std::string_view value = header_line.substr(colon + 1);
 
                     while (!value.empty() && value.front() == ' ')
-                    {
                         value.remove_prefix(1);
-                    }
 
-                    // Allocate header keys and values in the arena before inserting into unordered_map
-                    req.headers.emplace(
-                        std::pmr::string(key, mr), 
-                        std::pmr::string(value, mr)
-                    );
+                    // Allocate header values in the arena before inserting into unordered_map
+                    // Вставляем оригинальный ключ — HeaderMap сам сравнит его без учета регистра!
+                    req.headers.emplace(std::move(key), std::pmr::string(value, mr));
                 }
             }
 
