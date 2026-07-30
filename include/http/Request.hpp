@@ -1,5 +1,7 @@
 #pragma once
 
+#include "http/HeaderMap.hpp"
+
 #include <string>
 #include <unordered_map>
 #include <memory_resource>
@@ -25,7 +27,7 @@ namespace http
         std::pmr::string version;
         
         // Hash table for headers (e.g., "Host" -> "localhost:8080")
-        std::pmr::unordered_map<std::pmr::string, std::pmr::string> headers;
+        HeaderMap headers;
         
         std::pmr::string body;
 
