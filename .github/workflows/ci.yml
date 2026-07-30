@@ -1,0 +1,28 @@
+name: C++ CI
+
+# Run automation on every push and pull_request to the main (or master) branch
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-test:
+    # The virtual machine on which the code will be built
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository code
+      uses: actions/checkout@v4
+
+    - name: Configure CMake
+      run: cmake -B build -S .
+
+    - name: Build the project
+      run: cmake --build build -j4
+
+    - name: Run tests
+      working-directory: build
+      # ctest will execute all compiled tests
+      run: ctest --output-on-failure
