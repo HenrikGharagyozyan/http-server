@@ -59,12 +59,12 @@ namespace http
 
         req.method = string_to_method(request_line.substr(0, method_end));
 
-        // Отрезаем query-параметры (всё что после '?')
+        // Strip query parameters (everything after '?')
         std::string_view raw_uri = request_line.substr(method_end + 1, uri_end - method_end - 1);
         size_t query_pos = raw_uri.find('?');
         if (query_pos != std::string_view::npos) 
         {
-            raw_uri = raw_uri.substr(0, query_pos); // Берем только часть до '?'
+            raw_uri = raw_uri.substr(0, query_pos); // Take only the part before '?'
         }
         
         req.uri = std::pmr::string(raw_uri, mr);
@@ -97,7 +97,7 @@ namespace http
                         value.remove_prefix(1);
 
                     // Allocate header values in the arena before inserting into unordered_map
-                    // Вставляем оригинальный ключ — HeaderMap сам сравнит его без учета регистра!
+                    // Insert the original key — HeaderMap will compare it case-insensitively!
                     req.headers.emplace(std::move(key), std::pmr::string(value, mr));
                 }
             }

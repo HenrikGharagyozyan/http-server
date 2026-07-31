@@ -155,7 +155,27 @@ namespace server
 
         while (is_running_) 
         {
-            Socket client = tcp_server_.accept_connection();
+            std::string client_ip;
+            Socket client;
+
+            try 
+            {
+                client = tcp_server_.accept_connection(&client_ip);
+            }
+            catch (const std::system_error& e)
+            {
+                if (!is_running_) break;
+
+                int err = e.code().value();
+                if (err == EMFILE || err == ENFILE) 
+                {
+                    LOG_WARN("Out of file descriptors! Throttling for 100ms...");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+                LOG_ERROR("Accept error: {}", e.what());
+                continue;
+            }
             
             // If we returned an invalid socket because the server is stopping, break the loop
             if (!client.is_valid()) 
@@ -165,7 +185,9 @@ namespace server
             
             auto client_ptr = std::make_shared<Socket>(std::move(client));
             
-            pool.enqueue([this, client_ptr]() 
+            // Захватываем client_ip по значению в лямбду
+            // Пытаемся добавить в ThreadPool. Если очередь полна - отбиваем 503-й ошибкой
+            bool accepted = pool.enqueue([this, client_ptr, client_ip]() 
                 {
                     static thread_local MemCore::MallocUpstream upstream;
 
@@ -181,6 +203,9 @@ namespace server
 
                     std::string connection_buffer;
                     connection_buffer.reserve(8192);
+
+                    // Многоразовый буфер для чтения (выделяется один раз на сессию)
+                    std::vector<char> read_buf(4096);
 
                     while (true) 
                     {
@@ -208,10 +233,11 @@ namespace server
                                     return; // Immediately terminate the connection
                                 }
 
-                                std::string chunk = client_ptr->recv(4096);
-                                if (chunk.empty()) 
+                                // Используем новый zero-alloc recv!
+                                size_t bytes_read = client_ptr->recv(read_buf);
+                                if (bytes_read == 0) 
                                     break; 
-                                connection_buffer.append(chunk);
+                                connection_buffer.append(read_buf.data(), bytes_read);
                             }
 
                             if (connection_buffer.empty()) 
@@ -251,12 +277,12 @@ namespace server
                             // === PHASE 3: Read the body to completion ===
                             while (connection_buffer.size() < total_expected_size) 
                             {
-                                std::string chunk = client_ptr->recv(4096);
-                                if (chunk.empty()) 
+                                size_t bytes_read = client_ptr->recv(read_buf);
+                                if (bytes_read == 0) 
                                 {
                                     throw std::runtime_error("Connection dropped while reading body");
                                 }
-                                connection_buffer.append(chunk);
+                                connection_buffer.append(read_buf.data(), bytes_read);
                             }
 
                             // === PHASE 4: Parsing and routing ===
@@ -275,23 +301,66 @@ namespace server
                             }
 
                             http::Response res(&pmr_resource);
-                            res = this->router_.route(req);
+                            
+                            // Защита хэндлеров от падения (Exception Safety)
+                            try 
+                            {
+                                res = this->router_.route(req);
+                            }
+                            catch (const std::exception& e)
+                            {
+                                LOG_ERROR("[{}] Handler crashed: {}", client_ip, e.what());
+                                res.status_code = static_cast<http::StatusCode>(500); // 500 Internal Server Error
+                                res.body = "Internal Server Error";
+                                keep_alive = false; // При ошибке лучше разорвать соединение
+                            }
+                            catch (...)
+                            {
+                                LOG_ERROR("[{}] Handler crashed with unknown exception", client_ip);
+                                res.status_code = static_cast<http::StatusCode>(500);
+                                res.body = "Internal Server Error";
+                                keep_alive = false;
+                            }
+
+                            LOG_INFO("[{}] Request to '{}' -> HTTP {}", client_ip, std::string_view(req.uri), static_cast<int>(res.status_code));
                             
                             res.headers["Connection"] = keep_alive ? "keep-alive" : "close";
+                            // Пересчитываем длину, если обработчик упал и мы заменили body
+                            res.headers["Content-Length"] = std::to_string(res.body.size()); 
+                            
                             client_ptr->send(res.serialize());
 
                             if (!keep_alive) 
                                 break;
                             
                         } 
+                        catch (const std::system_error& e) 
+                        {
+                            // Ошибки сети (клиент отвалился, таймаут) - логируем как DEBUG или игнорируем
+                            LOG_WARN("[{}] Network error: {}", client_ip, e.what());
+                            break;
+                        }
                         catch (const std::exception& e) 
                         {
-                            LOG_ERROR("Thread error: {}", e.what());
+                            LOG_ERROR("[{}] Thread error: {}", client_ip, e.what());
                             send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::BAD_REQUEST, "Bad Request");
                             break;
                         }
                     }
                 });
+
+            // Если очередь переполнена, не бросаем исключение, а отдаем 503 и закрываем сокет
+            if (!accepted) 
+            {
+                LOG_WARN("[{}] Server is overloaded. Rejecting with 503.", client_ip);
+                
+                MemCore::MallocUpstream upstream;
+                MemCore::ArenaAllocator arena(upstream, 1024);
+                MemCore::PmrAdapter local_pmr(arena);
+                
+                // Кастуем 503 к StatusCode (предполагая, что 503 Service Unavailable у тебя может быть не заведен в enum)
+                send_rejection(client_ptr.get(), &local_pmr, static_cast<http::StatusCode>(503), "Service Unavailable - Server Overloaded");
+            }
         }
         
         LOG_INFO("Server loop stopped. Waiting for pending tasks to finish...");

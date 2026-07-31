@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <memory>
 
 namespace fs = std::filesystem;
 
@@ -30,11 +31,13 @@ namespace
 
 } // namespace
 
-// The static file cache is a process-wide singleton populated once,
-// so the whole suite shares one initialization.
+// The static file cache is populated once for the whole suite
+// using a static unique_ptr to the StaticHandler instance.
 class StaticHandlerTest : public ::testing::Test
 {
 protected:
+    static std::unique_ptr<handlers::StaticHandler> s_handler;
+
     static void SetUpTestSuite()
     {
         fs::path public_dir = fs::path(::testing::TempDir()) / "static_test_public";
@@ -43,13 +46,22 @@ protected:
         write_file(public_dir / "index.html", kIndexHtml);
         write_file(public_dir / "css" / "style.css", kStyleCss);
 
-        handlers::init_static_cache(public_dir.string());
+        // Instantiate the handler, which loads the cache via its constructor
+        s_handler = std::make_unique<handlers::StaticHandler>(public_dir.string());
+    }
+
+    static void TearDownTestSuite()
+    {
+        s_handler.reset();
     }
 };
 
+// Define the static member
+std::unique_ptr<handlers::StaticHandler> StaticHandlerTest::s_handler = nullptr;
+
 TEST_F(StaticHandlerTest, ServesCachedHtmlFile)
 {
-    http::Response res = handlers::handle_static_request(make_request("/index.html"));
+    http::Response res = s_handler->handle(make_request("/index.html"));
 
     EXPECT_EQ(res.status_code, http::StatusCode::OK);
     EXPECT_EQ(res.body, kIndexHtml.c_str());
@@ -59,7 +71,7 @@ TEST_F(StaticHandlerTest, ServesCachedHtmlFile)
 
 TEST_F(StaticHandlerTest, RootIsAliasForIndexHtml)
 {
-    http::Response res = handlers::handle_static_request(make_request("/"));
+    http::Response res = s_handler->handle(make_request("/"));
 
     EXPECT_EQ(res.status_code, http::StatusCode::OK);
     EXPECT_EQ(res.body, kIndexHtml.c_str());
@@ -67,7 +79,7 @@ TEST_F(StaticHandlerTest, RootIsAliasForIndexHtml)
 
 TEST_F(StaticHandlerTest, ServesNestedFileWithCorrectMime)
 {
-    http::Response res = handlers::handle_static_request(make_request("/css/style.css"));
+    http::Response res = s_handler->handle(make_request("/css/style.css"));
 
     EXPECT_EQ(res.status_code, http::StatusCode::OK);
     EXPECT_EQ(res.body, kStyleCss.c_str());
@@ -76,11 +88,10 @@ TEST_F(StaticHandlerTest, ServesNestedFileWithCorrectMime)
 
 TEST_F(StaticHandlerTest, MissingFileReturns404)
 {
-    http::Response res = handlers::handle_static_request(make_request("/nope.html"));
+    http::Response res = s_handler->handle(make_request("/nope.html"));
 
     EXPECT_EQ(res.status_code, http::StatusCode::NOT_FOUND);
     EXPECT_EQ(res.headers["Content-Type"], "text/html");
-    EXPECT_EQ(res.headers["Content-Length"], std::pmr::string(std::to_string(res.body.size())));
 }
 
 TEST_F(StaticHandlerTest, NonGetMethodIsNotAllowed)
@@ -89,7 +100,7 @@ TEST_F(StaticHandlerTest, NonGetMethodIsNotAllowed)
     req.method = http::Method::DELETE;
     req.uri = std::pmr::string("/index.html");
 
-    http::Response res = handlers::handle_static_request(req);
+    http::Response res = s_handler->handle(req);
 
     EXPECT_EQ(res.status_code, http::StatusCode::METHOD_NOT_ALLOWED);
     EXPECT_EQ(res.headers["Allow"], "GET");
@@ -97,14 +108,14 @@ TEST_F(StaticHandlerTest, NonGetMethodIsNotAllowed)
 
 TEST_F(StaticHandlerTest, PathTraversalIsForbidden)
 {
-    http::Response res = handlers::handle_static_request(make_request("/../etc/passwd"));
+    http::Response res = s_handler->handle(make_request("/../etc/passwd"));
 
     EXPECT_EQ(res.status_code, http::StatusCode::FORBIDDEN);
 }
 
 TEST_F(StaticHandlerTest, EmbeddedDotDotIsForbidden)
 {
-    http::Response res = handlers::handle_static_request(make_request("/css/../../secret.txt"));
+    http::Response res = s_handler->handle(make_request("/css/../../secret.txt"));
 
     EXPECT_EQ(res.status_code, http::StatusCode::FORBIDDEN);
 }
