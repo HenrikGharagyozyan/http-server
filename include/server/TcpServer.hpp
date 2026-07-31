@@ -25,8 +25,8 @@ namespace server
         // Wake accept() and stop accepting new clients
         void stop();
 
-        // Block and wait for a new client
-        Socket accept_connection();
+        // Опционально возвращает IP клиента
+        Socket accept_connection(std::string* client_ip = nullptr);
 
     private:
         Socket listen_socket_;
