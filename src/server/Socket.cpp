@@ -5,6 +5,7 @@
 #include <sys/time.h> // For struct timeval
 #include <cerrno>     // For errno, EAGAIN, EWOULDBLOCK
 #include <stdexcept>
+#include <system_error>
 
 
 namespace server 
@@ -53,7 +54,19 @@ namespace server
         // Set the SO_RCVTIMEO option on the socket
         if (::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) 
         {
-            throw std::runtime_error("Failed to set receive timeout on socket");
+            throw std::system_error(errno, std::generic_category(), "Failed to set SO_RCVTIMEO");
+        }
+    }
+
+    void Socket::set_snd_timeout(int seconds)
+    {
+        struct timeval timeout{};
+        timeout.tv_sec = seconds;
+        timeout.tv_usec = 0;
+
+        if (::setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) 
+        {
+            throw std::system_error(errno, std::generic_category(), "Failed to set SO_SNDTIMEO");
         }
     }
 
@@ -72,7 +85,7 @@ namespace server
             {
                 return ""; 
             }
-            throw std::runtime_error("Failed to receive data from socket");
+            throw std::system_error(errno, std::generic_category(), "Failed to receive data");
         }
         
         if (bytes_received == 0) 
@@ -98,7 +111,7 @@ namespace server
             
             if (sent < 0) 
             {
-                throw std::runtime_error("Failed to send data to socket");
+                throw std::system_error(errno, std::generic_category(), "Failed to send data");
             }
             
             total_sent += static_cast<size_t>(sent);

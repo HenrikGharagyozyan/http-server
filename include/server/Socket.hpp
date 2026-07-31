@@ -34,8 +34,9 @@ namespace server
         // Manual close
         void close() noexcept;
 
-        // Sets a timeout for reading (to prevent the thread from hanging forever)
+        // Sets a timeout for reading and sending (to prevent the thread from hanging forever)
         void set_rcv_timeout(int seconds);
+        void set_snd_timeout(int seconds);
 
         [[nodiscard]] std::string recv(size_t max_bytes = 4096);
         void send(std::span<const char> data);
