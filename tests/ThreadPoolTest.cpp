@@ -12,7 +12,7 @@ TEST(ThreadPoolTest, ExecutesSingleTask)
     std::atomic<bool> ran{false};
     {
         server::ThreadPool pool(2);
-        pool.enqueue([&] { ran = true; });
+        EXPECT_TRUE(pool.enqueue([&] { ran = true; }));
     } // Destructor drains the queue and joins
 
     EXPECT_TRUE(ran);
@@ -26,7 +26,7 @@ TEST(ThreadPoolTest, DestructorDrainsAllPendingTasks)
         server::ThreadPool pool(4);
         for (int i = 0; i < task_count; ++i)
         {
-            pool.enqueue([&] { counter.fetch_add(1, std::memory_order_relaxed); });
+            EXPECT_TRUE(pool.enqueue([&] { counter.fetch_add(1, std::memory_order_relaxed); }));
         }
     }
 
@@ -43,11 +43,11 @@ TEST(ThreadPoolTest, TasksRunConcurrently)
         server::ThreadPool pool(2);
         for (int i = 0; i < 2; ++i)
         {
-            pool.enqueue([&]
+            EXPECT_TRUE(pool.enqueue([&]
             {
                 rendezvous.arrive_and_wait();
                 done.fetch_add(1);
-            });
+            }));
         }
     }
 
@@ -61,7 +61,7 @@ TEST(ThreadPoolTest, SingleThreadPoolRunsTasksInOrder)
         server::ThreadPool pool(1);
         for (int i = 0; i < 10; ++i)
         {
-            pool.enqueue([&order, i] { order.push_back(i); });
+            EXPECT_TRUE(pool.enqueue([&order, i] { order.push_back(i); }));
         }
     }
 
@@ -78,14 +78,14 @@ TEST(ThreadPoolTest, EnqueueFromWorkerThreadDoesNotDeadlock)
     {
         server::ThreadPool pool(2);
         std::latch inner_done(1);
-        pool.enqueue([&]
+        EXPECT_TRUE(pool.enqueue([&]
         {
-            pool.enqueue([&]
+            EXPECT_TRUE(pool.enqueue([&]
             {
                 inner_ran = true;
                 inner_done.count_down();
-            });
-        });
+            }));
+        }));
         // Wait inside the scope so the inner task is enqueued before shutdown
         inner_done.wait();
     }
@@ -101,11 +101,11 @@ TEST(ThreadPoolTest, DestructorReturnsWhileLongTaskAlreadyFinished)
     auto start = std::chrono::steady_clock::now();
     {
         server::ThreadPool pool(2);
-        pool.enqueue([&]
+        EXPECT_TRUE(pool.enqueue([&]
         {
             std::this_thread::sleep_for(50ms);
             finished = true;
-        });
+        }));
     }
     auto elapsed = std::chrono::steady_clock::now() - start;
 
@@ -113,3 +113,4 @@ TEST(ThreadPoolTest, DestructorReturnsWhileLongTaskAlreadyFinished)
     EXPECT_TRUE(finished);
     EXPECT_GE(elapsed, 50ms);
 }
+
