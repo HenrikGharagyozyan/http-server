@@ -17,7 +17,7 @@ namespace http
         result += get_status_message(status_code);
         result += "\r\n";
 
-        // Проверяем наличие Content-Length (благодаря HeaderMap поиск регистронезависимый)
+        // Check for Content-Length (HeaderMap lookup is case-insensitive)
         bool has_content_length = (headers.find("Content-Length") != headers.end());
 
         // Headers
@@ -29,8 +29,8 @@ namespace http
             result += "\r\n";
         }
 
-        // Автоматически добавляем Content-Length, если его не выставил хэндлер 
-        // (за исключением статусов 204 No Content и 304 Not Modified)
+        // Automatically add Content-Length if the handler did not set it
+        // (except for 204 No Content and 304 Not Modified)
         if (!has_content_length && status_code != StatusCode::NO_CONTENT && status_code != StatusCode::NOT_MODIFIED) 
         {
             result += "Content-Length: ";
