@@ -3,8 +3,8 @@
 namespace server
 {
 
-    ThreadPool::ThreadPool(size_t num_threads) 
-        : stop_(false) 
+    ThreadPool::ThreadPool(size_t num_threads, size_t max_queue_size) 
+        : stop_(false), max_queue_size_(max_queue_size)
     {
         // Start N threads when the pool is created
         for (size_t i = 0; i < num_threads; ++i) 
@@ -46,13 +46,19 @@ namespace server
         }
     }
 
-    void ThreadPool::enqueue(std::function<void()> task) 
+    bool ThreadPool::enqueue(std::function<void()> task) 
     {
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
+            // Backpressure: отбрасываем задачу, если очередь полна
+            if (tasks_.size() >= max_queue_size_) 
+            {
+                return false;
+            }
             tasks_.push(std::move(task));
         }
         condition_.notify_one(); // Wake one of the sleeping threads
+        return true;
     }
 
     ThreadPool::~ThreadPool() 
