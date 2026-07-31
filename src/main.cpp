@@ -52,11 +52,14 @@ int main()
         g_app = &app; // Pass reference to the global pointer
         
         // Load all static files from disk into memory
-        handlers::init_static_cache("../public");
+        handlers::StaticHandler static_handler("./public");
 
         app.get("/api/users", handlers::get_users);
         app.post("/api/users", handlers::create_user);
-        app.set_default_handler(handlers::handle_static_request);
+        app.set_default_handler([&static_handler](const http::Request& req)
+            {
+                return static_handler.handle(req);
+            });
 
         // 3. Start the server with config parameters
         app.listen(port, threads);
