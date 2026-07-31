@@ -155,7 +155,27 @@ namespace server
 
         while (is_running_) 
         {
-            Socket client = tcp_server_.accept_connection();
+            std::string client_ip;
+            Socket client;
+
+            try 
+            {
+                client = tcp_server_.accept_connection(&client_ip);
+            }
+            catch (const std::system_error& e)
+            {
+                if (!is_running_) break;
+
+                int err = e.code().value();
+                if (err == EMFILE || err == ENFILE) 
+                {
+                    LOG_WARN("Out of file descriptors! Throttling for 100ms...");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+                LOG_ERROR("Accept error: {}", e.what());
+                continue;
+            }
             
             // If we returned an invalid socket because the server is stopping, break the loop
             if (!client.is_valid()) 
@@ -165,7 +185,8 @@ namespace server
             
             auto client_ptr = std::make_shared<Socket>(std::move(client));
             
-            pool.enqueue([this, client_ptr]() 
+            // Захватываем client_ip по значению в лямбду
+            pool.enqueue([this, client_ptr, client_ip]() 
                 {
                     static thread_local MemCore::MallocUpstream upstream;
 
@@ -276,6 +297,8 @@ namespace server
 
                             http::Response res(&pmr_resource);
                             res = this->router_.route(req);
+
+                            LOG_INFO("[{}] Request to '{}' -> HTTP {}", client_ip, std::string_view(req.uri), static_cast<int>(res.status_code));
                             
                             res.headers["Connection"] = keep_alive ? "keep-alive" : "close";
                             client_ptr->send(res.serialize());
@@ -284,9 +307,15 @@ namespace server
                                 break;
                             
                         } 
+                        catch (const std::system_error& e) 
+                        {
+                            // Ошибки сети (клиент отвалился, таймаут) - логируем как DEBUG или игнорируем
+                            LOG_WARN("[{}] Network error: {}", client_ip, e.what());
+                            break;
+                        }
                         catch (const std::exception& e) 
                         {
-                            LOG_ERROR("Thread error: {}", e.what());
+                            LOG_ERROR("[{}] Thread error: {}", client_ip, e.what());
                             send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::BAD_REQUEST, "Bad Request");
                             break;
                         }
