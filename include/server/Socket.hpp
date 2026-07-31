@@ -39,6 +39,9 @@ namespace server
         void set_snd_timeout(int seconds);
 
         [[nodiscard]] std::string recv(size_t max_bytes = 4096);
+        // Новая zero-alloc версия чтения
+        size_t recv(std::span<char> buffer);
+        
         void send(std::span<const char> data);
 
     private:

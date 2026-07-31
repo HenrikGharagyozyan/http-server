@@ -99,6 +99,23 @@ namespace server
         return buffer;
     }
 
+    
+    size_t Socket::recv(std::span<char> buffer) 
+    {
+        ssize_t bytes_received = ::recv(fd_, buffer.data(), buffer.size(), 0);
+        
+        if (bytes_received < 0) 
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNRESET) 
+            {
+                return 0; 
+            }
+            throw std::system_error(errno, std::generic_category(), "Failed to receive data");
+        }
+        
+        return static_cast<size_t>(bytes_received);
+    }
+    
     void Socket::send(std::span<const char> data) 
     {
         size_t total_sent = 0;
