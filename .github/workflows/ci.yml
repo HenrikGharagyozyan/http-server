@@ -1,28 +1,36 @@
 name: C++ CI
 
-# Run automation on every push and pull_request to the main (or master) branch
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
 
 jobs:
   build-and-test:
-    # The virtual machine on which the code will be built
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [{cxx: g++, c: gcc}, {cxx: clang++, c: clang}]
+        preset: [dev, release]
 
     steps:
-    - name: Checkout repository code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v3
 
+    - name: Set up CMake
+      uses: jwlawson/actions-setup-cmake@v1.13
+      
     - name: Configure CMake
-      run: cmake -B build -S .
+      env:
+        CXX: ${{ matrix.compiler.cxx }}
+        CC: ${{ matrix.compiler.c }}
+      run: cmake --preset ${{ matrix.preset }}
 
-    - name: Build the project
-      run: cmake --build build -j4
+    - name: Build
+      run: cmake --build build_${{ matrix.preset }} -j4 || cmake --build build -j4
 
-    - name: Run tests
-      working-directory: build
-      # ctest will execute all compiled tests
-      run: ctest --output-on-failure
+    - name: Run Tests
+      working-directory: ${{ github.workspace }}
+      run: |
+        if [ -d "build" ]; then cd build; else cd build_release; fi
+        ctest --output-on-failure
