@@ -5,30 +5,23 @@
 
 #include <memory>
 #include <charconv>
-#include <algorithm> // For std::search
-#include <cctype>   // For std::tolower
+#include <algorithm>
+#include <cctype>
 #include <memory_resource>
 
 #include <MemCore/MallocUpstream.hpp>
 #include <MemCore/ArenaAllocator.hpp>
 #include <MemCore/PmrAdapter.hpp>
 
-
 namespace 
 {
-
-    // --- Safety limits ---
-    constexpr size_t MAX_HEADER_SIZE = 16 * 1024;        // 16 KB
-    constexpr size_t MAX_BODY_SIZE   = 10 * 1024 * 1024; // 10 MB
-    constexpr size_t MAX_URI_SIZE    = 8 * 1024;         // 8 KB
-
 
     struct HeaderInspection 
     {
         size_t content_length = 0;
         bool has_content_length = false;
         bool is_chunked = false;
-        bool invalid = false; // Set for duplicates, non-numeric values, or overflow
+        bool invalid = false;
     };
 
     HeaderInspection inspect_headers(std::string_view headers) 
@@ -37,10 +30,10 @@ namespace
         size_t pos = 0;
 
         auto iequals = [](std::string_view a, std::string_view b) 
-                            {
-                                return std::equal(a.begin(), a.end(), b.begin(), b.end(),
-                                    [](char c1, char c2) { return std::tolower(c1) == std::tolower(c2); });
-                            };
+        {
+            return std::equal(a.begin(), a.end(), b.begin(), b.end(),
+                [](char c1, char c2) { return std::tolower(c1) == std::tolower(c2); });
+        };
 
         while (pos < headers.size()) 
         {
@@ -61,13 +54,11 @@ namespace
             std::string_view key = line.substr(0, colon);
             std::string_view val = line.substr(colon + 1);
 
-            // Trim leading and trailing spaces
             while (!val.empty() && (val.front() == ' ' || val.front() == '\t')) val.remove_prefix(1);
             while (!val.empty() && (val.back() == ' ' || val.back() == '\t'))   val.remove_suffix(1);
 
             if (iequals(key, "Content-Length")) 
             {
-                // Protection against HTTP request smuggling
                 if (info.has_content_length) 
                 {
                     info.invalid = true;
@@ -103,26 +94,20 @@ namespace
         return info;
     }
 
-    // Helper function for quickly sending errors to the client
     void send_rejection(server::Socket* socket, std::pmr::memory_resource* pmr, http::StatusCode code, std::string_view body) 
     {
         try 
         {
             http::Response res(pmr);
             res.status_code = code;
-            res.body = std::string(body); // Convert string_view to string
-            res.headers["Content-Length"] = std::to_string(res.body.size());
+            res.body = std::string(body);
             res.headers["Connection"] = "close";
+            // res.serialize() automatically handles Content-Length
             socket->send(res.serialize());
         } 
-        catch (...) 
-        {
-            // Ignore socket errors when sending rejection responses
-        }
+        catch (...) {}
     }
-
 }
-
 
 namespace server 
 {
@@ -141,15 +126,15 @@ namespace server
     {
         router_.set_default_handler(std::move(handler));
     }
-
     
-    void HttpServer::listen(uint16_t port, size_t thread_count)
+    // FIX: Using Config struct directly
+    void HttpServer::listen(const Config& config)
     {
-        tcp_server_.start(port);
-        LOG_INFO("HttpServer is listening on port {}...", port);
+        tcp_server_.start(config.port);
+        LOG_INFO("HttpServer is listening on port {}...", config.port);
 
-        ThreadPool pool(thread_count); 
-        LOG_INFO("Thread pool started with {} workers.", thread_count);
+        ThreadPool pool(config.threads); 
+        LOG_INFO("Thread pool started with {} workers.", config.threads);
         
         is_running_ = true;
 
@@ -164,7 +149,8 @@ namespace server
             }
             catch (const std::system_error& e)
             {
-                if (!is_running_) break;
+                if (!is_running_) 
+                    break;
 
                 int err = e.code().value();
                 if (err == EMFILE || err == ENFILE) 
@@ -177,23 +163,19 @@ namespace server
                 continue;
             }
             
-            // If we returned an invalid socket because the server is stopping, break the loop
             if (!client.is_valid()) 
-            {
                 break;
-            }
             
             auto client_ptr = std::make_shared<Socket>(std::move(client));
             
-            // Захватываем client_ip по значению в лямбду
-            // Пытаемся добавить в ThreadPool. Если очередь полна - отбиваем 503-й ошибкой
-            bool accepted = pool.enqueue([this, client_ptr, client_ip]() 
+            bool accepted = pool.enqueue([this, client_ptr, client_ip, config]() 
                 {
                     static thread_local MemCore::MallocUpstream upstream;
 
                     try 
                     {
-                        client_ptr->set_rcv_timeout(5);
+                        client_ptr->set_rcv_timeout(config.keep_alive_timeout);
+                        client_ptr->set_snd_timeout(config.keep_alive_timeout);
                     } 
                     catch (const std::exception& e) 
                     {
@@ -203,8 +185,6 @@ namespace server
 
                     std::string connection_buffer;
                     connection_buffer.reserve(8192);
-
-                    // Многоразовый буфер для чтения (выделяется один раз на сессию)
                     std::vector<char> read_buf(4096);
 
                     while (true) 
@@ -214,42 +194,37 @@ namespace server
 
                         try 
                         {
-                            // === PHASE 1: Read headers with limit checking ===
                             size_t headers_end = std::string::npos;
                             while ((headers_end = connection_buffer.find("\r\n\r\n")) == std::string::npos) 
                             {
-                                // Check limits BEFORE reading new bytes
-                                if (connection_buffer.size() > MAX_HEADER_SIZE) 
+                                if (connection_buffer.size() > config.max_header_size) 
                                 {
                                     size_t first_line_end = connection_buffer.find("\r\n");
-                                    if (first_line_end != std::string::npos && first_line_end > MAX_URI_SIZE) 
-                                    {
+                                    if (first_line_end != std::string::npos && first_line_end > 8192) 
+                                    {                                if (connection_buffer.size() > config.max_header_size) 
+
                                         send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::URI_TOO_LONG, "URI Too Long");
                                     } 
                                     else 
                                     {
                                         send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::HEADER_FIELDS_TOO_LARGE, "Headers Too Large");
                                     }
-                                    return; // Immediately terminate the connection
+                                    return;
                                 }
 
-                                // Используем новый zero-alloc recv!
                                 size_t bytes_read = client_ptr->recv(read_buf);
-                                if (bytes_read == 0) 
-                                    break; 
+                                if (bytes_read == 0) break; 
                                 connection_buffer.append(read_buf.data(), bytes_read);
                             }
 
                             if (connection_buffer.empty()) 
-                                break; // Normal connection close
-
+                                break;
                             if (headers_end == std::string::npos) 
                             {
                                 LOG_ERROR("Connection closed before full headers received.");
                                 break;
                             }
 
-                            // === PHASE 2: Inspect headers ===
                             std::string_view headers_view(connection_buffer.data(), headers_end);
                             HeaderInspection info = inspect_headers(headers_view);
 
@@ -266,7 +241,7 @@ namespace server
                                 break;
                             }
 
-                            if (info.content_length > MAX_BODY_SIZE) 
+                            if (info.content_length > config.max_request_size) 
                             {
                                 send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::PAYLOAD_TOO_LARGE, "Payload Too Large");
                                 break;
@@ -274,7 +249,6 @@ namespace server
 
                             size_t total_expected_size = headers_end + 4 + info.content_length;
 
-                            // === PHASE 3: Read the body to completion ===
                             while (connection_buffer.size() < total_expected_size) 
                             {
                                 size_t bytes_read = client_ptr->recv(read_buf);
@@ -285,7 +259,6 @@ namespace server
                                 connection_buffer.append(read_buf.data(), bytes_read);
                             }
 
-                            // === PHASE 4: Parsing and routing ===
                             std::string raw_request = connection_buffer.substr(0, total_expected_size);
                             connection_buffer.erase(0, total_expected_size);
 
@@ -296,13 +269,11 @@ namespace server
                             auto it = req.headers.find("Connection");
                             if (it != req.headers.end()) 
                             {
-                                if (it->second == "close" || it->second == "Close") 
-                                    keep_alive = false;
+                                if (it->second == "close" || it->second == "Close") keep_alive = false;
                             }
 
                             http::Response res(&pmr_resource);
                             
-                            // Защита хэндлеров от падения (Exception Safety)
                             try 
                             {
                                 res = this->router_.route(req);
@@ -310,14 +281,14 @@ namespace server
                             catch (const std::exception& e)
                             {
                                 LOG_ERROR("[{}] Handler crashed: {}", client_ip, e.what());
-                                res.status_code = static_cast<http::StatusCode>(500); // 500 Internal Server Error
+                                res.status_code = http::StatusCode::INTERNAL_SERVER_ERROR; 
                                 res.body = "Internal Server Error";
-                                keep_alive = false; // При ошибке лучше разорвать соединение
+                                keep_alive = false;
                             }
                             catch (...)
                             {
                                 LOG_ERROR("[{}] Handler crashed with unknown exception", client_ip);
-                                res.status_code = static_cast<http::StatusCode>(500);
+                                res.status_code = http::StatusCode::INTERNAL_SERVER_ERROR; 
                                 res.body = "Internal Server Error";
                                 keep_alive = false;
                             }
@@ -325,18 +296,14 @@ namespace server
                             LOG_INFO("[{}] Request to '{}' -> HTTP {}", client_ip, std::string_view(req.uri), static_cast<int>(res.status_code));
                             
                             res.headers["Connection"] = keep_alive ? "keep-alive" : "close";
-                            // Пересчитываем длину, если обработчик упал и мы заменили body
-                            res.headers["Content-Length"] = std::to_string(res.body.size()); 
-                            
+                                                        
                             client_ptr->send(res.serialize());
 
-                            if (!keep_alive) 
-                                break;
+                            if (!keep_alive) break;
                             
                         } 
                         catch (const std::system_error& e) 
                         {
-                            // Ошибки сети (клиент отвалился, таймаут) - логируем как DEBUG или игнорируем
                             LOG_WARN("[{}] Network error: {}", client_ip, e.what());
                             break;
                         }
@@ -349,7 +316,6 @@ namespace server
                     }
                 });
 
-            // Если очередь переполнена, не бросаем исключение, а отдаем 503 и закрываем сокет
             if (!accepted) 
             {
                 LOG_WARN("[{}] Server is overloaded. Rejecting with 503.", client_ip);
@@ -358,21 +324,18 @@ namespace server
                 MemCore::ArenaAllocator arena(upstream, 1024);
                 MemCore::PmrAdapter local_pmr(arena);
                 
-                // Кастуем 503 к StatusCode (предполагая, что 503 Service Unavailable у тебя может быть не заведен в enum)
-                send_rejection(client_ptr.get(), &local_pmr, static_cast<http::StatusCode>(503), "Service Unavailable - Server Overloaded");
+                send_rejection(client_ptr.get(), &local_pmr, http::StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable - Server Overloaded");
             }
         }
         
         LOG_INFO("Server loop stopped. Waiting for pending tasks to finish...");
-        // When 'pool' goes out of scope, its ThreadPool destructor is called,
-        // which waits for all active connections to finish via worker.join().
         LOG_INFO("Server shutdown gracefully.");
     }
 
     void HttpServer::stop()
     {
         is_running_ = false;
-        tcp_server_.stop();  // Unblock accept_connection
+        tcp_server_.stop();
     }
 
 } // namespace server
