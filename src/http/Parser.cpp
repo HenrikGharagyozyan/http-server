@@ -98,7 +98,7 @@ namespace http
 
                     // Allocate header values in the arena before inserting into unordered_map
                     // Insert the original key — HeaderMap will compare it case-insensitively!
-                    req.headers.emplace(std::move(key), std::pmr::string(value, mr));
+                    req.headers.emplace(key, std::pmr::string(value, mr));
                 }
             }
 
