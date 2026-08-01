@@ -226,7 +226,10 @@ protected:
         {
             try
             {
-                app->listen(port, 4);
+                server::Config config;
+                config.port = port;
+                config.threads = 4;
+                app->listen(config);
             }
             catch (...)
             {

@@ -197,14 +197,13 @@ namespace server
                             size_t headers_end = std::string::npos;
                             while ((headers_end = connection_buffer.find("\r\n\r\n")) == std::string::npos) 
                             {
-                                if (connection_buffer.size() > config.max_header_size) 
+                                if (connection_buffer.size() > config.max_header_size)
                                 {
                                     size_t first_line_end = connection_buffer.find("\r\n");
-                                    if (first_line_end != std::string::npos && first_line_end > 8192) 
-                                    {                                if (connection_buffer.size() > config.max_header_size) 
-
+                                    if (first_line_end != std::string::npos && first_line_end > config.max_uri_size)
+                                    {
                                         send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::URI_TOO_LONG, "URI Too Long");
-                                    } 
+                                    }
                                     else 
                                     {
                                         send_rejection(client_ptr.get(), &pmr_resource, http::StatusCode::HEADER_FIELDS_TOO_LARGE, "Headers Too Large");

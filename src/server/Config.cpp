@@ -24,13 +24,14 @@ namespace server
             {
                 nlohmann::json j = nlohmann::json::parse(file);
                 
-                if (j.contains("server")) 
+                if (j.contains("server"))
                 {
                     if (j["server"].contains("port")) config.port = j["server"]["port"];
                     if (j["server"].contains("threads")) config.threads = j["server"]["threads"];
+                    if (j["server"].contains("public_dir")) config.public_dir = j["server"]["public_dir"];
                 }
-                // FIX: Read public_dir from the "paths" section
-                if (j.contains("paths") && j["paths"].contains("public_dir")) 
+                // Legacy location: "paths" section
+                if (j.contains("paths") && j["paths"].contains("public_dir"))
                 {
                     config.public_dir = j["paths"]["public_dir"];
                 }
