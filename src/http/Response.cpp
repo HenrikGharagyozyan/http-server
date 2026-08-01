@@ -1,6 +1,5 @@
 #include "http/Response.hpp"
 
-#include <sstream> // For std::ostringstream
 
 namespace http 
 {

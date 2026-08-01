@@ -1,0 +1,27 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Development Build (Debug + ASan)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ENABLE_SANITIZERS": "ON",
+        "ENABLE_WERROR": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release Build (Optimized)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build_release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ENABLE_SANITIZERS": "OFF",
+        "ENABLE_WERROR": "OFF"
+      }
+    }
+  ]
+}

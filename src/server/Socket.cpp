@@ -120,14 +120,16 @@ namespace server
     {
         size_t total_sent = 0;
         
-        // Ensure we send all bytes
         while (total_sent < data.size()) 
         {
-            // Use MSG_NOSIGNAL so Linux does not raise SIGPIPE on connection reset
             ssize_t sent = ::send(fd_, data.data() + total_sent, data.size() - total_sent, MSG_NOSIGNAL);
             
             if (sent < 0) 
             {
+                if (errno == EINTR) 
+                {
+                    continue;
+                }
                 throw std::system_error(errno, std::generic_category(), "Failed to send data");
             }
             

@@ -1,15 +1,23 @@
-# Ignore folders where CMake builds the project
+# Сборка CMake
 build/
+build_release/
 out/
-.cache/
+bin/
+
+# Тестирование и логи
+Testing/
+logs/
+*.log
+
+# IDE и редакторы
+.vscode/
+.VSCodeCounter/
+.idea/
+*.swp
 compile_commands.json
 
-# Ignore files created by IDEs (VS Code, CLion, etc.)
-.idea/
-.vscode/
-*.swp
-*.suo
-*.user
+# Зависимости (если вдруг CMake качает их локально)
+_deps/
 
 .VSCodeCounter
 Testing/

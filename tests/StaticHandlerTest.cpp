@@ -66,7 +66,10 @@ TEST_F(StaticHandlerTest, ServesCachedHtmlFile)
     EXPECT_EQ(res.status_code, http::StatusCode::OK);
     EXPECT_EQ(res.body, kIndexHtml.c_str());
     EXPECT_EQ(res.headers["Content-Type"], "text/html");
-    EXPECT_EQ(res.headers["Content-Length"], std::pmr::string(std::to_string(kIndexHtml.size())));
+
+    // Content-Length is auto-generated during serialization
+    std::string out(res.serialize());
+    EXPECT_NE(out.find("Content-Length: " + std::to_string(kIndexHtml.size()) + "\r\n"), std::string::npos) << out;
 }
 
 TEST_F(StaticHandlerTest, RootIsAliasForIndexHtml)
