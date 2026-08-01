@@ -1,13 +1,12 @@
 #include "server/HttpServer.hpp"
+#include "server/Config.hpp"
 #include "handlers/StaticHandler.hpp"
 #include "handlers/UserHandler.hpp"
 #include "utils/Logger.hpp"
 
-#include <nlohmann/json.hpp>
-#include <fstream>
 #include <csignal>
+#include <exception>
 
-using json = nlohmann::json;
 
 // Global pointer is needed to catch OS signals
 server::HttpServer* g_app = nullptr;
@@ -23,7 +22,7 @@ void signal_handler(int /*signal_num*/)
     }
 }
 
-int main() 
+int main(int argc, char* argv[])
 {
     // 1. Ignore SIGPIPE at the process-wide level.
     // If the client breaks the connection, the process won't crash and send() returns EPIPE.
@@ -35,24 +34,16 @@ int main()
 
     try 
     {
-        // 1. Read configuration
-        std::ifstream config_file("../config.json"); // Path depends on the working directory (build)
-        if (!config_file.is_open()) 
-        {
-            LOG_ERROR("Could not open config.json!");
-            return 1;
-        }
-        
-        json config = json::parse(config_file);
-        uint16_t port = config["server"]["port"];
-        size_t threads = config["server"]["threads"];
+        // 1. Загружаем конфигурацию (Файл -> Аргументы -> Env -> Дефолт + Валидация)
+        server::Config config = server::Config::load(argc, argv);
 
-        // 2. Initialize the server
+        // 2. Load all static files from disk into memory
+        handlers::StaticHandler static_handler(config.public_dir);
+
+        // 3. Инициализируем сервер
         server::HttpServer app;
-        g_app = &app; // Pass reference to the global pointer
+        g_app = &app;
         
-        // Load all static files from disk into memory
-        handlers::StaticHandler static_handler("./public");
 
         app.get("/api/users", handlers::get_users);
         app.post("/api/users", handlers::create_user);
@@ -62,13 +53,9 @@ int main()
             });
 
         // 3. Start the server with config parameters
-        app.listen(port, threads);
+        LOG_INFO("Starting HTTP server on port {} with {} threads", config.port, config.threads);
+        app.listen(config.port, config.threads);
     } 
-    catch (const json::parse_error& e) 
-    {
-        LOG_ERROR("Config parse error: {}", e.what());
-        return 1;
-    }
     catch (const std::exception& e) 
     {
         LOG_ERROR("Fatal error: {}", e.what());
