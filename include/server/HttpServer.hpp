@@ -2,6 +2,7 @@
 
 #include "server/TcpServer.hpp"
 #include "server/Router.hpp"
+#include "server/Config.hpp"
 
 #include <string>
 #include <atomic>
@@ -22,7 +23,7 @@ namespace server
         void set_default_handler(Handler handler);
 
         // Main startup method (contains the while loop)
-        void listen(uint16_t port, size_t thread_count);
+        void listen(const Config& config);
 
         void stop();
 

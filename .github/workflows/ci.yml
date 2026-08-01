@@ -27,10 +27,7 @@ jobs:
       run: cmake --preset ${{ matrix.preset }}
 
     - name: Build
-      run: cmake --build build_${{ matrix.preset }} -j4 || cmake --build build -j4
+      run: cmake --build ${{ matrix.preset == 'dev' && 'build' || 'build_release' }} -j4
 
     - name: Run Tests
-      working-directory: ${{ github.workspace }}
-      run: |
-        if [ -d "build" ]; then cd build; else cd build_release; fi
-        ctest --output-on-failure
+      run: ctest --test-dir ${{ matrix.preset == 'dev' && 'build' || 'build_release' }} --output-on-failure

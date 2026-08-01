@@ -16,6 +16,7 @@ namespace server
         // Safety limits and timeouts
         size_t max_request_size = 1024 * 1024; // 1 MB
         size_t max_header_size = 16 * 1024;    // 16 KB
+        size_t max_uri_size = 8 * 1024;        // 8 KB
         size_t keep_alive_timeout = 5;         // 5 seconds
 
         // Factory method to load configuration

@@ -54,7 +54,7 @@ int main(int argc, char* argv[])
 
         // 3. Start the server with config parameters
         LOG_INFO("Starting HTTP server on port {} with {} threads", config.port, config.threads);
-        app.listen(config.port, config.threads);
+        app.listen(config);
     } 
     catch (const std::exception& e) 
     {
