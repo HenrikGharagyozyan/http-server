@@ -34,7 +34,7 @@ include(FetchContent)
 FetchContent_Declare(
     MemCore
     GIT_REPOSITORY https://github.com/HenrikGharagyozyan/MemCore.git
-    GIT_TAG main 
+    GIT_TAG v1.0
 )
 FetchContent_MakeAvailable(MemCore)
 
