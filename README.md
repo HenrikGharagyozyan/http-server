@@ -1,6 +1,8 @@
 # http-server
 
 [![C++ CI](https://github.com/HenrikGharagyozyan/http-server/actions/workflows/ci.yml/badge.svg)](https://github.com/HenrikGharagyozyan/http-server/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
 
 An HTTP/1.1 server built from scratch in **C++20** on raw POSIX sockets — no networking frameworks. Written to explore how real web servers work under the hood: connection lifecycle, incremental request parsing, backpressure, and per-request arena allocation.
 
